@@ -1170,7 +1170,7 @@ pub trait Instance: crate::private::Sealed + any::Degrade {
     }
 }
 
-for_each_i2c_master!(
+for_each_i2c_slave!(
     ($inst:ident, $peri:ident, $scl:ident, $sda:ident) => {
         impl Instance for crate::peripherals::$inst<'_> {
             fn parts(&self) -> (&Info, &State) {
@@ -1202,9 +1202,9 @@ for_each_i2c_master!(
 crate::any_peripheral! {
     /// Any I2C peripheral.
     pub peripheral AnyI2c<'d> {
-        #[cfg(i2c_master_i2c0)]
+        #[cfg(i2c_slave_i2c0)]
         I2c0(crate::peripherals::I2C0<'d>),
-        #[cfg(i2c_master_i2c1)]
+        #[cfg(i2c_slave_i2c1)]
         I2c1(crate::peripherals::I2C1<'d>),
     }
 }

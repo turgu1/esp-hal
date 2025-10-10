@@ -168,6 +168,60 @@ macro_rules! property {
     ("i2c_master.fifo_size", str) => {
         stringify!(32)
     };
+    ("i2c_slave.has_fsm_timeouts") => {
+        false
+    };
+    ("i2c_slave.has_hw_bus_clear") => {
+        false
+    };
+    ("i2c_slave.has_bus_timeout_enable") => {
+        false
+    };
+    ("i2c_slave.separate_filter_config_registers") => {
+        true
+    };
+    ("i2c_slave.can_estimate_nack_reason") => {
+        false
+    };
+    ("i2c_slave.has_conf_update") => {
+        false
+    };
+    ("i2c_slave.has_reliable_fsm_reset") => {
+        false
+    };
+    ("i2c_slave.has_arbitration_en") => {
+        false
+    };
+    ("i2c_slave.has_tx_fifo_watermark") => {
+        false
+    };
+    ("i2c_slave.bus_timeout_is_exponential") => {
+        false
+    };
+    ("i2c_slave.i2c0_data_register_ahb_address") => {
+        1610690588
+    };
+    ("i2c_slave.i2c0_data_register_ahb_address", str) => {
+        stringify!(1610690588)
+    };
+    ("i2c_slave.max_bus_timeout") => {
+        1048575
+    };
+    ("i2c_slave.max_bus_timeout", str) => {
+        stringify!(1048575)
+    };
+    ("i2c_slave.ll_intr_mask") => {
+        262143
+    };
+    ("i2c_slave.ll_intr_mask", str) => {
+        stringify!(262143)
+    };
+    ("i2c_slave.fifo_size") => {
+        32
+    };
+    ("i2c_slave.fifo_size", str) => {
+        stringify!(32)
+    };
     ("interrupts.status_registers") => {
         3
     };
@@ -393,6 +447,33 @@ macro_rules! for_each_sha_algorithm {
 #[macro_export]
 #[cfg_attr(docsrs, doc(cfg(feature = "_device-selected")))]
 macro_rules! for_each_i2c_master {
+    ($($pattern:tt => $code:tt;)*) => {
+        macro_rules! _for_each_inner { $(($pattern) => $code;)* ($other : tt) => {} }
+        _for_each_inner!((I2C0, I2cExt0, I2CEXT0_SCL, I2CEXT0_SDA));
+        _for_each_inner!((I2C1, I2cExt1, I2CEXT1_SCL, I2CEXT1_SDA));
+        _for_each_inner!((all(I2C0, I2cExt0, I2CEXT0_SCL, I2CEXT0_SDA), (I2C1, I2cExt1,
+        I2CEXT1_SCL, I2CEXT1_SDA)));
+    };
+}
+/// This macro can be used to generate code for each peripheral instance of the I2C slave driver.
+///
+/// For an explanation on the general syntax, as well as usage of individual/repeated
+/// matchers, refer to [the crate-level documentation][crate#for_each-macros].
+///
+/// This macro has one option for its "Individual matcher" case:
+///
+/// Syntax: `($instance:ident, $sys:ident, $scl:ident, $sda:ident)`
+///
+/// Macro fragments:
+///
+/// - `$instance`: the name of the I2C instance
+/// - `$sys`: the name of the instance as it is in the `esp_hal::system::Peripheral` enum.
+/// - `$scl`, `$sda`: peripheral signal names.
+///
+/// Example data: `(I2C0, I2cExt0, I2CEXT0_SCL, I2CEXT0_SDA)`
+#[macro_export]
+#[cfg_attr(docsrs, doc(cfg(feature = "_device-selected")))]
+macro_rules! for_each_i2c_slave {
     ($($pattern:tt => $code:tt;)*) => {
         macro_rules! _for_each_inner { $(($pattern) => $code;)* ($other : tt) => {} }
         _for_each_inner!((I2C0, I2cExt0, I2CEXT0_SCL, I2CEXT0_SDA));

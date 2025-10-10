@@ -223,6 +223,7 @@ impl Chip {
                     "dma",
                     "gpio",
                     "i2c_master",
+                    "i2c_slave",
                     "i2s",
                     "interrupts",
                     "io_mux",
@@ -255,6 +256,8 @@ impl Chip {
                     "dac_dac2",
                     "i2c_master_i2c0",
                     "i2c_master_i2c1",
+                    "i2c_slave_i2c0",
+                    "i2c_slave_i2c1",
                     "spi_master_spi2",
                     "spi_master_spi3",
                     "spi_slave_spi2",
@@ -286,6 +289,12 @@ impl Chip {
                     "i2c_master_max_bus_timeout=\"1048575\"",
                     "i2c_master_ll_intr_mask=\"262143\"",
                     "i2c_master_fifo_size=\"32\"",
+                    "i2c_slave_separate_filter_config_registers",
+                    "i2c_slave_i2c0_data_register_ahb_address=\"1610690588\"",
+                    "i2c_slave_i2c0_data_register_ahb_address_is_set",
+                    "i2c_slave_max_bus_timeout=\"1048575\"",
+                    "i2c_slave_ll_intr_mask=\"262143\"",
+                    "i2c_slave_fifo_size=\"32\"",
                     "interrupts_status_registers=\"3\"",
                     "rmt_ram_start=\"1073047552\"",
                     "rmt_channel_ram_size=\"64\"",
@@ -385,6 +394,7 @@ impl Chip {
                     "cargo:rustc-cfg=dma",
                     "cargo:rustc-cfg=gpio",
                     "cargo:rustc-cfg=i2c_master",
+                    "cargo:rustc-cfg=i2c_slave",
                     "cargo:rustc-cfg=i2s",
                     "cargo:rustc-cfg=interrupts",
                     "cargo:rustc-cfg=io_mux",
@@ -417,6 +427,8 @@ impl Chip {
                     "cargo:rustc-cfg=dac_dac2",
                     "cargo:rustc-cfg=i2c_master_i2c0",
                     "cargo:rustc-cfg=i2c_master_i2c1",
+                    "cargo:rustc-cfg=i2c_slave_i2c0",
+                    "cargo:rustc-cfg=i2c_slave_i2c1",
                     "cargo:rustc-cfg=spi_master_spi2",
                     "cargo:rustc-cfg=spi_master_spi3",
                     "cargo:rustc-cfg=spi_slave_spi2",
@@ -448,6 +460,12 @@ impl Chip {
                     "cargo:rustc-cfg=i2c_master_max_bus_timeout=\"1048575\"",
                     "cargo:rustc-cfg=i2c_master_ll_intr_mask=\"262143\"",
                     "cargo:rustc-cfg=i2c_master_fifo_size=\"32\"",
+                    "cargo:rustc-cfg=i2c_slave_separate_filter_config_registers",
+                    "cargo:rustc-cfg=i2c_slave_i2c0_data_register_ahb_address=\"1610690588\"",
+                    "cargo:rustc-cfg=i2c_slave_i2c0_data_register_ahb_address_is_set",
+                    "cargo:rustc-cfg=i2c_slave_max_bus_timeout=\"1048575\"",
+                    "cargo:rustc-cfg=i2c_slave_ll_intr_mask=\"262143\"",
+                    "cargo:rustc-cfg=i2c_slave_fifo_size=\"32\"",
                     "cargo:rustc-cfg=interrupts_status_registers=\"3\"",
                     "cargo:rustc-cfg=rmt_ram_start=\"1073047552\"",
                     "cargo:rustc-cfg=rmt_channel_ram_size=\"64\"",
@@ -785,6 +803,7 @@ impl Chip {
                     "gpio",
                     "hmac",
                     "i2c_master",
+                    "i2c_slave",
                     "i2s",
                     "interrupts",
                     "io_mux",
@@ -808,6 +827,7 @@ impl Chip {
                     "adc_adc1",
                     "adc_adc2",
                     "i2c_master_i2c0",
+                    "i2c_slave_i2c0",
                     "spi_master_spi2",
                     "spi_slave_spi2",
                     "timergroup_timg0",
@@ -846,6 +866,16 @@ impl Chip {
                     "i2c_master_max_bus_timeout=\"31\"",
                     "i2c_master_ll_intr_mask=\"262143\"",
                     "i2c_master_fifo_size=\"32\"",
+                    "i2c_slave_has_fsm_timeouts",
+                    "i2c_slave_has_hw_bus_clear",
+                    "i2c_slave_has_bus_timeout_enable",
+                    "i2c_slave_has_conf_update",
+                    "i2c_slave_has_arbitration_en",
+                    "i2c_slave_has_tx_fifo_watermark",
+                    "i2c_slave_bus_timeout_is_exponential",
+                    "i2c_slave_max_bus_timeout=\"31\"",
+                    "i2c_slave_ll_intr_mask=\"262143\"",
+                    "i2c_slave_fifo_size=\"32\"",
                     "interrupts_status_registers=\"2\"",
                     "rmt_ram_start=\"1610703872\"",
                     "rmt_channel_ram_size=\"48\"",
@@ -947,6 +977,7 @@ impl Chip {
                     "cargo:rustc-cfg=gpio",
                     "cargo:rustc-cfg=hmac",
                     "cargo:rustc-cfg=i2c_master",
+                    "cargo:rustc-cfg=i2c_slave",
                     "cargo:rustc-cfg=i2s",
                     "cargo:rustc-cfg=interrupts",
                     "cargo:rustc-cfg=io_mux",
@@ -970,6 +1001,7 @@ impl Chip {
                     "cargo:rustc-cfg=adc_adc1",
                     "cargo:rustc-cfg=adc_adc2",
                     "cargo:rustc-cfg=i2c_master_i2c0",
+                    "cargo:rustc-cfg=i2c_slave_i2c0",
                     "cargo:rustc-cfg=spi_master_spi2",
                     "cargo:rustc-cfg=spi_slave_spi2",
                     "cargo:rustc-cfg=timergroup_timg0",
@@ -1008,6 +1040,16 @@ impl Chip {
                     "cargo:rustc-cfg=i2c_master_max_bus_timeout=\"31\"",
                     "cargo:rustc-cfg=i2c_master_ll_intr_mask=\"262143\"",
                     "cargo:rustc-cfg=i2c_master_fifo_size=\"32\"",
+                    "cargo:rustc-cfg=i2c_slave_has_fsm_timeouts",
+                    "cargo:rustc-cfg=i2c_slave_has_hw_bus_clear",
+                    "cargo:rustc-cfg=i2c_slave_has_bus_timeout_enable",
+                    "cargo:rustc-cfg=i2c_slave_has_conf_update",
+                    "cargo:rustc-cfg=i2c_slave_has_arbitration_en",
+                    "cargo:rustc-cfg=i2c_slave_has_tx_fifo_watermark",
+                    "cargo:rustc-cfg=i2c_slave_bus_timeout_is_exponential",
+                    "cargo:rustc-cfg=i2c_slave_max_bus_timeout=\"31\"",
+                    "cargo:rustc-cfg=i2c_slave_ll_intr_mask=\"262143\"",
+                    "cargo:rustc-cfg=i2c_slave_fifo_size=\"32\"",
                     "cargo:rustc-cfg=interrupts_status_registers=\"2\"",
                     "cargo:rustc-cfg=rmt_ram_start=\"1610703872\"",
                     "cargo:rustc-cfg=rmt_channel_ram_size=\"48\"",
@@ -1158,6 +1200,7 @@ impl Chip {
                     "hmac",
                     "i2c_master",
                     "lp_i2c_master",
+                    "i2c_slave",
                     "i2s",
                     "interrupts",
                     "io_mux",
@@ -1187,6 +1230,7 @@ impl Chip {
                     "phy",
                     "adc_adc1",
                     "i2c_master_i2c0",
+                    "i2c_slave_i2c0",
                     "spi_master_spi2",
                     "spi_slave_spi2",
                     "timergroup_timg0",
@@ -1229,6 +1273,18 @@ impl Chip {
                     "i2c_master_ll_intr_mask=\"262143\"",
                     "i2c_master_fifo_size=\"32\"",
                     "lp_i2c_master_fifo_size=\"16\"",
+                    "i2c_slave_has_fsm_timeouts",
+                    "i2c_slave_has_hw_bus_clear",
+                    "i2c_slave_has_bus_timeout_enable",
+                    "i2c_slave_can_estimate_nack_reason",
+                    "i2c_slave_has_conf_update",
+                    "i2c_slave_has_reliable_fsm_reset",
+                    "i2c_slave_has_arbitration_en",
+                    "i2c_slave_has_tx_fifo_watermark",
+                    "i2c_slave_bus_timeout_is_exponential",
+                    "i2c_slave_max_bus_timeout=\"31\"",
+                    "i2c_slave_ll_intr_mask=\"262143\"",
+                    "i2c_slave_fifo_size=\"32\"",
                     "interrupts_status_registers=\"3\"",
                     "rmt_ram_start=\"1610638336\"",
                     "rmt_channel_ram_size=\"48\"",
@@ -1376,6 +1432,7 @@ impl Chip {
                     "cargo:rustc-cfg=hmac",
                     "cargo:rustc-cfg=i2c_master",
                     "cargo:rustc-cfg=lp_i2c_master",
+                    "cargo:rustc-cfg=i2c_slave",
                     "cargo:rustc-cfg=i2s",
                     "cargo:rustc-cfg=interrupts",
                     "cargo:rustc-cfg=io_mux",
@@ -1405,6 +1462,7 @@ impl Chip {
                     "cargo:rustc-cfg=phy",
                     "cargo:rustc-cfg=adc_adc1",
                     "cargo:rustc-cfg=i2c_master_i2c0",
+                    "cargo:rustc-cfg=i2c_slave_i2c0",
                     "cargo:rustc-cfg=spi_master_spi2",
                     "cargo:rustc-cfg=spi_slave_spi2",
                     "cargo:rustc-cfg=timergroup_timg0",
@@ -1447,6 +1505,18 @@ impl Chip {
                     "cargo:rustc-cfg=i2c_master_ll_intr_mask=\"262143\"",
                     "cargo:rustc-cfg=i2c_master_fifo_size=\"32\"",
                     "cargo:rustc-cfg=lp_i2c_master_fifo_size=\"16\"",
+                    "cargo:rustc-cfg=i2c_slave_has_fsm_timeouts",
+                    "cargo:rustc-cfg=i2c_slave_has_hw_bus_clear",
+                    "cargo:rustc-cfg=i2c_slave_has_bus_timeout_enable",
+                    "cargo:rustc-cfg=i2c_slave_can_estimate_nack_reason",
+                    "cargo:rustc-cfg=i2c_slave_has_conf_update",
+                    "cargo:rustc-cfg=i2c_slave_has_reliable_fsm_reset",
+                    "cargo:rustc-cfg=i2c_slave_has_arbitration_en",
+                    "cargo:rustc-cfg=i2c_slave_has_tx_fifo_watermark",
+                    "cargo:rustc-cfg=i2c_slave_bus_timeout_is_exponential",
+                    "cargo:rustc-cfg=i2c_slave_max_bus_timeout=\"31\"",
+                    "cargo:rustc-cfg=i2c_slave_ll_intr_mask=\"262143\"",
+                    "cargo:rustc-cfg=i2c_slave_fifo_size=\"32\"",
                     "cargo:rustc-cfg=interrupts_status_registers=\"3\"",
                     "cargo:rustc-cfg=rmt_ram_start=\"1610638336\"",
                     "cargo:rustc-cfg=rmt_channel_ram_size=\"48\"",
@@ -1578,6 +1648,7 @@ impl Chip {
                     "gpio",
                     "hmac",
                     "i2c_master",
+                    "i2c_slave",
                     "i2s",
                     "interrupts",
                     "io_mux",
@@ -1604,6 +1675,8 @@ impl Chip {
                     "adc_adc1",
                     "i2c_master_i2c0",
                     "i2c_master_i2c1",
+                    "i2c_slave_i2c0",
+                    "i2c_slave_i2c1",
                     "spi_master_spi2",
                     "spi_slave_spi2",
                     "timergroup_timg0",
@@ -1645,6 +1718,18 @@ impl Chip {
                     "i2c_master_max_bus_timeout=\"31\"",
                     "i2c_master_ll_intr_mask=\"262143\"",
                     "i2c_master_fifo_size=\"32\"",
+                    "i2c_slave_has_fsm_timeouts",
+                    "i2c_slave_has_hw_bus_clear",
+                    "i2c_slave_has_bus_timeout_enable",
+                    "i2c_slave_can_estimate_nack_reason",
+                    "i2c_slave_has_conf_update",
+                    "i2c_slave_has_reliable_fsm_reset",
+                    "i2c_slave_has_arbitration_en",
+                    "i2c_slave_has_tx_fifo_watermark",
+                    "i2c_slave_bus_timeout_is_exponential",
+                    "i2c_slave_max_bus_timeout=\"31\"",
+                    "i2c_slave_ll_intr_mask=\"262143\"",
+                    "i2c_slave_fifo_size=\"32\"",
                     "interrupts_status_registers=\"2\"",
                     "rmt_ram_start=\"1610642432\"",
                     "rmt_channel_ram_size=\"48\"",
@@ -1767,6 +1852,7 @@ impl Chip {
                     "cargo:rustc-cfg=gpio",
                     "cargo:rustc-cfg=hmac",
                     "cargo:rustc-cfg=i2c_master",
+                    "cargo:rustc-cfg=i2c_slave",
                     "cargo:rustc-cfg=i2s",
                     "cargo:rustc-cfg=interrupts",
                     "cargo:rustc-cfg=io_mux",
@@ -1793,6 +1879,8 @@ impl Chip {
                     "cargo:rustc-cfg=adc_adc1",
                     "cargo:rustc-cfg=i2c_master_i2c0",
                     "cargo:rustc-cfg=i2c_master_i2c1",
+                    "cargo:rustc-cfg=i2c_slave_i2c0",
+                    "cargo:rustc-cfg=i2c_slave_i2c1",
                     "cargo:rustc-cfg=spi_master_spi2",
                     "cargo:rustc-cfg=spi_slave_spi2",
                     "cargo:rustc-cfg=timergroup_timg0",
@@ -1834,6 +1922,18 @@ impl Chip {
                     "cargo:rustc-cfg=i2c_master_max_bus_timeout=\"31\"",
                     "cargo:rustc-cfg=i2c_master_ll_intr_mask=\"262143\"",
                     "cargo:rustc-cfg=i2c_master_fifo_size=\"32\"",
+                    "cargo:rustc-cfg=i2c_slave_has_fsm_timeouts",
+                    "cargo:rustc-cfg=i2c_slave_has_hw_bus_clear",
+                    "cargo:rustc-cfg=i2c_slave_has_bus_timeout_enable",
+                    "cargo:rustc-cfg=i2c_slave_can_estimate_nack_reason",
+                    "cargo:rustc-cfg=i2c_slave_has_conf_update",
+                    "cargo:rustc-cfg=i2c_slave_has_reliable_fsm_reset",
+                    "cargo:rustc-cfg=i2c_slave_has_arbitration_en",
+                    "cargo:rustc-cfg=i2c_slave_has_tx_fifo_watermark",
+                    "cargo:rustc-cfg=i2c_slave_bus_timeout_is_exponential",
+                    "cargo:rustc-cfg=i2c_slave_max_bus_timeout=\"31\"",
+                    "cargo:rustc-cfg=i2c_slave_ll_intr_mask=\"262143\"",
+                    "cargo:rustc-cfg=i2c_slave_fifo_size=\"32\"",
                     "cargo:rustc-cfg=interrupts_status_registers=\"2\"",
                     "cargo:rustc-cfg=rmt_ram_start=\"1610642432\"",
                     "cargo:rustc-cfg=rmt_channel_ram_size=\"48\"",
@@ -1950,6 +2050,7 @@ impl Chip {
                     "gpio",
                     "hmac",
                     "i2c_master",
+                    "i2c_slave",
                     "i2s",
                     "interrupts",
                     "io_mux",
@@ -1979,6 +2080,8 @@ impl Chip {
                     "dac_dac2",
                     "i2c_master_i2c0",
                     "i2c_master_i2c1",
+                    "i2c_slave_i2c0",
+                    "i2c_slave_i2c1",
                     "spi_master_spi2",
                     "spi_master_spi3",
                     "spi_slave_spi2",
@@ -2019,6 +2122,14 @@ impl Chip {
                     "i2c_master_max_bus_timeout=\"16777215\"",
                     "i2c_master_ll_intr_mask=\"131071\"",
                     "i2c_master_fifo_size=\"32\"",
+                    "i2c_slave_has_bus_timeout_enable",
+                    "i2c_slave_separate_filter_config_registers",
+                    "i2c_slave_has_arbitration_en",
+                    "i2c_slave_i2c0_data_register_ahb_address=\"1610690588\"",
+                    "i2c_slave_i2c0_data_register_ahb_address_is_set",
+                    "i2c_slave_max_bus_timeout=\"16777215\"",
+                    "i2c_slave_ll_intr_mask=\"131071\"",
+                    "i2c_slave_fifo_size=\"32\"",
                     "interrupts_status_registers=\"3\"",
                     "rmt_ram_start=\"1061250048\"",
                     "rmt_channel_ram_size=\"64\"",
@@ -2128,6 +2239,7 @@ impl Chip {
                     "cargo:rustc-cfg=gpio",
                     "cargo:rustc-cfg=hmac",
                     "cargo:rustc-cfg=i2c_master",
+                    "cargo:rustc-cfg=i2c_slave",
                     "cargo:rustc-cfg=i2s",
                     "cargo:rustc-cfg=interrupts",
                     "cargo:rustc-cfg=io_mux",
@@ -2157,6 +2269,8 @@ impl Chip {
                     "cargo:rustc-cfg=dac_dac2",
                     "cargo:rustc-cfg=i2c_master_i2c0",
                     "cargo:rustc-cfg=i2c_master_i2c1",
+                    "cargo:rustc-cfg=i2c_slave_i2c0",
+                    "cargo:rustc-cfg=i2c_slave_i2c1",
                     "cargo:rustc-cfg=spi_master_spi2",
                     "cargo:rustc-cfg=spi_master_spi3",
                     "cargo:rustc-cfg=spi_slave_spi2",
@@ -2197,6 +2311,14 @@ impl Chip {
                     "cargo:rustc-cfg=i2c_master_max_bus_timeout=\"16777215\"",
                     "cargo:rustc-cfg=i2c_master_ll_intr_mask=\"131071\"",
                     "cargo:rustc-cfg=i2c_master_fifo_size=\"32\"",
+                    "cargo:rustc-cfg=i2c_slave_has_bus_timeout_enable",
+                    "cargo:rustc-cfg=i2c_slave_separate_filter_config_registers",
+                    "cargo:rustc-cfg=i2c_slave_has_arbitration_en",
+                    "cargo:rustc-cfg=i2c_slave_i2c0_data_register_ahb_address=\"1610690588\"",
+                    "cargo:rustc-cfg=i2c_slave_i2c0_data_register_ahb_address_is_set",
+                    "cargo:rustc-cfg=i2c_slave_max_bus_timeout=\"16777215\"",
+                    "cargo:rustc-cfg=i2c_slave_ll_intr_mask=\"131071\"",
+                    "cargo:rustc-cfg=i2c_slave_fifo_size=\"32\"",
                     "cargo:rustc-cfg=interrupts_status_registers=\"3\"",
                     "cargo:rustc-cfg=rmt_ram_start=\"1061250048\"",
                     "cargo:rustc-cfg=rmt_channel_ram_size=\"64\"",
@@ -2320,6 +2442,7 @@ impl Chip {
                     "gpio",
                     "hmac",
                     "i2c_master",
+                    "i2c_slave",
                     "i2s",
                     "interrupts",
                     "io_mux",
@@ -2353,6 +2476,8 @@ impl Chip {
                     "adc_adc2",
                     "i2c_master_i2c0",
                     "i2c_master_i2c1",
+                    "i2c_slave_i2c0",
+                    "i2c_slave_i2c1",
                     "spi_master_spi2",
                     "spi_master_spi3",
                     "spi_slave_spi2",
@@ -2393,6 +2518,16 @@ impl Chip {
                     "i2c_master_max_bus_timeout=\"31\"",
                     "i2c_master_ll_intr_mask=\"262143\"",
                     "i2c_master_fifo_size=\"32\"",
+                    "i2c_slave_has_fsm_timeouts",
+                    "i2c_slave_has_bus_timeout_enable",
+                    "i2c_slave_can_estimate_nack_reason",
+                    "i2c_slave_has_conf_update",
+                    "i2c_slave_has_arbitration_en",
+                    "i2c_slave_has_tx_fifo_watermark",
+                    "i2c_slave_bus_timeout_is_exponential",
+                    "i2c_slave_max_bus_timeout=\"31\"",
+                    "i2c_slave_ll_intr_mask=\"262143\"",
+                    "i2c_slave_fifo_size=\"32\"",
                     "interrupts_status_registers=\"4\"",
                     "rmt_ram_start=\"1610704896\"",
                     "rmt_channel_ram_size=\"48\"",
@@ -2520,6 +2655,7 @@ impl Chip {
                     "cargo:rustc-cfg=gpio",
                     "cargo:rustc-cfg=hmac",
                     "cargo:rustc-cfg=i2c_master",
+                    "cargo:rustc-cfg=i2c_slave",
                     "cargo:rustc-cfg=i2s",
                     "cargo:rustc-cfg=interrupts",
                     "cargo:rustc-cfg=io_mux",
@@ -2553,6 +2689,8 @@ impl Chip {
                     "cargo:rustc-cfg=adc_adc2",
                     "cargo:rustc-cfg=i2c_master_i2c0",
                     "cargo:rustc-cfg=i2c_master_i2c1",
+                    "cargo:rustc-cfg=i2c_slave_i2c0",
+                    "cargo:rustc-cfg=i2c_slave_i2c1",
                     "cargo:rustc-cfg=spi_master_spi2",
                     "cargo:rustc-cfg=spi_master_spi3",
                     "cargo:rustc-cfg=spi_slave_spi2",
@@ -2593,6 +2731,16 @@ impl Chip {
                     "cargo:rustc-cfg=i2c_master_max_bus_timeout=\"31\"",
                     "cargo:rustc-cfg=i2c_master_ll_intr_mask=\"262143\"",
                     "cargo:rustc-cfg=i2c_master_fifo_size=\"32\"",
+                    "cargo:rustc-cfg=i2c_slave_has_fsm_timeouts",
+                    "cargo:rustc-cfg=i2c_slave_has_bus_timeout_enable",
+                    "cargo:rustc-cfg=i2c_slave_can_estimate_nack_reason",
+                    "cargo:rustc-cfg=i2c_slave_has_conf_update",
+                    "cargo:rustc-cfg=i2c_slave_has_arbitration_en",
+                    "cargo:rustc-cfg=i2c_slave_has_tx_fifo_watermark",
+                    "cargo:rustc-cfg=i2c_slave_bus_timeout_is_exponential",
+                    "cargo:rustc-cfg=i2c_slave_max_bus_timeout=\"31\"",
+                    "cargo:rustc-cfg=i2c_slave_ll_intr_mask=\"262143\"",
+                    "cargo:rustc-cfg=i2c_slave_fifo_size=\"32\"",
                     "cargo:rustc-cfg=interrupts_status_registers=\"4\"",
                     "cargo:rustc-cfg=rmt_ram_start=\"1610704896\"",
                     "cargo:rustc-cfg=rmt_channel_ram_size=\"48\"",
@@ -2728,6 +2876,7 @@ pub fn emit_check_cfg_directives() {
     println!("cargo:rustc-check-cfg=cfg(dma)");
     println!("cargo:rustc-check-cfg=cfg(gpio)");
     println!("cargo:rustc-check-cfg=cfg(i2c_master)");
+    println!("cargo:rustc-check-cfg=cfg(i2c_slave)");
     println!("cargo:rustc-check-cfg=cfg(i2s)");
     println!("cargo:rustc-check-cfg=cfg(interrupts)");
     println!("cargo:rustc-check-cfg=cfg(io_mux)");
@@ -2757,6 +2906,8 @@ pub fn emit_check_cfg_directives() {
     println!("cargo:rustc-check-cfg=cfg(dac_dac2)");
     println!("cargo:rustc-check-cfg=cfg(i2c_master_i2c0)");
     println!("cargo:rustc-check-cfg=cfg(i2c_master_i2c1)");
+    println!("cargo:rustc-check-cfg=cfg(i2c_slave_i2c0)");
+    println!("cargo:rustc-check-cfg=cfg(i2c_slave_i2c1)");
     println!("cargo:rustc-check-cfg=cfg(spi_master_spi2)");
     println!("cargo:rustc-check-cfg=cfg(spi_master_spi3)");
     println!("cargo:rustc-check-cfg=cfg(spi_slave_spi2)");
@@ -2775,6 +2926,8 @@ pub fn emit_check_cfg_directives() {
     println!("cargo:rustc-check-cfg=cfg(gpio_remap_iomux_pin_registers)");
     println!("cargo:rustc-check-cfg=cfg(i2c_master_separate_filter_config_registers)");
     println!("cargo:rustc-check-cfg=cfg(i2c_master_i2c0_data_register_ahb_address_is_set)");
+    println!("cargo:rustc-check-cfg=cfg(i2c_slave_separate_filter_config_registers)");
+    println!("cargo:rustc-check-cfg=cfg(i2c_slave_i2c0_data_register_ahb_address_is_set)");
     println!("cargo:rustc-check-cfg=cfg(rmt_has_per_channel_clock)");
     println!("cargo:rustc-check-cfg=cfg(rmt_supports_reftick_clock)");
     println!("cargo:rustc-check-cfg=cfg(rmt_supports_apb_clock)");
@@ -2846,6 +2999,13 @@ pub fn emit_check_cfg_directives() {
     println!("cargo:rustc-check-cfg=cfg(aes_dma_mode_cfb128)");
     println!("cargo:rustc-check-cfg=cfg(aes_has_split_text_registers)");
     println!("cargo:rustc-check-cfg=cfg(assist_debug_has_region_monitor)");
+    println!("cargo:rustc-check-cfg=cfg(i2c_slave_has_fsm_timeouts)");
+    println!("cargo:rustc-check-cfg=cfg(i2c_slave_has_hw_bus_clear)");
+    println!("cargo:rustc-check-cfg=cfg(i2c_slave_has_bus_timeout_enable)");
+    println!("cargo:rustc-check-cfg=cfg(i2c_slave_has_conf_update)");
+    println!("cargo:rustc-check-cfg=cfg(i2c_slave_has_arbitration_en)");
+    println!("cargo:rustc-check-cfg=cfg(i2c_slave_has_tx_fifo_watermark)");
+    println!("cargo:rustc-check-cfg=cfg(i2c_slave_bus_timeout_is_exponential)");
     println!("cargo:rustc-check-cfg=cfg(rmt_has_tx_immediate_stop)");
     println!("cargo:rustc-check-cfg=cfg(rmt_has_tx_loop_count)");
     println!("cargo:rustc-check-cfg=cfg(rmt_has_tx_carrier_data_only)");
@@ -2907,6 +3067,8 @@ pub fn emit_check_cfg_directives() {
     println!("cargo:rustc-check-cfg=cfg(soc_cpu_has_prv_mode)");
     println!("cargo:rustc-check-cfg=cfg(i2c_master_can_estimate_nack_reason)");
     println!("cargo:rustc-check-cfg=cfg(i2c_master_has_reliable_fsm_reset)");
+    println!("cargo:rustc-check-cfg=cfg(i2c_slave_can_estimate_nack_reason)");
+    println!("cargo:rustc-check-cfg=cfg(i2c_slave_has_reliable_fsm_reset)");
     println!("cargo:rustc-check-cfg=cfg(rmt_has_tx_loop_auto_stop)");
     println!("cargo:rustc-check-cfg=cfg(rmt_supports_pll80mhz_clock)");
     println!("cargo:rustc-check-cfg=cfg(wifi_has_wifi6)");
@@ -2962,6 +3124,14 @@ pub fn emit_check_cfg_directives() {
     );
     println!("cargo:rustc-check-cfg=cfg(i2c_master_ll_intr_mask, values(\"262143\",\"131071\"))");
     println!("cargo:rustc-check-cfg=cfg(i2c_master_fifo_size, values(\"32\",\"16\"))");
+    println!(
+        "cargo:rustc-check-cfg=cfg(i2c_slave_i2c0_data_register_ahb_address, values(\"1610690588\"))"
+    );
+    println!(
+        "cargo:rustc-check-cfg=cfg(i2c_slave_max_bus_timeout, values(\"1048575\",\"31\",\"16777215\"))"
+    );
+    println!("cargo:rustc-check-cfg=cfg(i2c_slave_ll_intr_mask, values(\"262143\",\"131071\"))");
+    println!("cargo:rustc-check-cfg=cfg(i2c_slave_fifo_size, values(\"32\"))");
     println!("cargo:rustc-check-cfg=cfg(interrupts_status_registers, values(\"3\",\"2\",\"4\"))");
     println!(
         "cargo:rustc-check-cfg=cfg(rmt_ram_start, values(\"1073047552\",\"1610703872\",\"1610638336\",\"1610642432\",\"1061250048\",\"1610704896\"))"

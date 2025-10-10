@@ -1,6 +1,7 @@
 pub(crate) mod aes;
 pub(crate) mod gpio;
 pub(crate) mod i2c_master;
+pub(crate) mod i2c_slave;
 pub(crate) mod rmt;
 pub(crate) mod rsa;
 pub(crate) mod sha;
@@ -12,6 +13,7 @@ pub(crate) mod uart;
 pub(crate) use aes::*;
 pub(crate) use gpio::*;
 pub(crate) use i2c_master::*;
+pub(crate) use i2c_slave::*;
 pub(crate) use rmt::*;
 pub(crate) use sha::*;
 pub(crate) use spi_master::*;
@@ -416,10 +418,36 @@ driver_configs![
             fifo_size: u32,
         }
     },
-    I2cSlaveProperties {
+    I2cSlaveProperties<I2cSlaveInstanceConfig> {
         driver: i2c_slave,
         name: "I2C slave",
-        properties: {}
+        properties: {
+            #[serde(default)]
+            has_fsm_timeouts: bool,
+            #[serde(default)]
+            has_hw_bus_clear: bool,
+            #[serde(default)]
+            has_bus_timeout_enable: bool,
+            #[serde(default)]
+            separate_filter_config_registers: bool,
+            #[serde(default)]
+            can_estimate_nack_reason: bool,
+            #[serde(default)]
+            has_conf_update: bool,
+            #[serde(default)]
+            has_reliable_fsm_reset: bool,
+            #[serde(default)]
+            has_arbitration_en: bool,
+            #[serde(default)]
+            has_tx_fifo_watermark: bool,
+            #[serde(default)]
+            bus_timeout_is_exponential: bool,
+            #[serde(default)]
+            i2c0_data_register_ahb_address: Option<u32>,
+            max_bus_timeout: u32,
+            ll_intr_mask: u32,
+            fifo_size: u32,            
+        }
     },
     I2sProperties {
         driver: i2s,
