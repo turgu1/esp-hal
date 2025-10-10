@@ -75,7 +75,6 @@ use crate::{
     Blocking,
     DriverMode,
     asynch::AtomicWaker,
-    clock::Clocks,
     gpio::{
         DriveMode,
         InputSignal,
@@ -87,11 +86,12 @@ use crate::{
     },
     handler,
     interrupt::{self, InterruptHandler},
-    pac::i2c0::{RegisterBlock, COMD},
+    pac::i2c0::{RegisterBlock},
     private,
     ram,
     system::PeripheralGuard,
-    time::{Duration, Instant},
+    time::{Instant},
+    any_peripheral,
 };
 
 const I2C_FIFO_SIZE: usize = property!("i2c_master.fifo_size");
@@ -452,9 +452,9 @@ impl<'a> I2cFuture<'a> {
                     Event::ByteReceived => w.rx_rec_full().set_bit(),
                     Event::ByteTransmitted => w.tx_send_empty().set_bit(),
                     Event::TransComplete => w.trans_complete().set_bit(),
-                    Event::SlaveAddressed => w.slave_addressed().set_bit(),
-                    Event::StopDetected => w.trans_complete().set_bit(), // Use trans_complete for STOP
-                    Event::StartDetected => w.slave_addressed().set_bit(), // Use slave_addressed for START
+                    Event::SlaveAddressed => w.trans_complete().set_bit(),
+                    Event::StopDetected => w.end_detect().set_bit(), // Use end_detect for STOP
+                    Event::StartDetected => w.trans_start().set_bit(), // Use trans_start for START
                 };
             }
 
@@ -833,9 +833,9 @@ impl Info {
                     Event::ByteReceived => w.rx_rec_full().bit(enable),
                     Event::ByteTransmitted => w.tx_send_empty().bit(enable),
                     Event::TransComplete => w.trans_complete().bit(enable),
-                    Event::SlaveAddressed => w.slave_addressed().bit(enable),
-                    Event::StopDetected => w.trans_complete().bit(enable),
-                    Event::StartDetected => w.slave_addressed().bit(enable),
+                    Event::SlaveAddressed => w.trans_complete().bit(enable),
+                    Event::StopDetected => w.end_detect().bit(enable),
+                    Event::StartDetected => w.trans_start().bit(enable),
                 };
             }
             w
@@ -864,7 +864,7 @@ impl Info {
             res.insert(Event::TransComplete);
             res.insert(Event::StopDetected);
         }
-        if ints.slave_addressed().bit_is_set() {
+        if ints.trans_complete().bit_is_set() {
             res.insert(Event::SlaveAddressed);
             res.insert(Event::StartDetected);
         }
@@ -883,9 +883,9 @@ impl Info {
                     Event::ByteReceived => w.rx_rec_full().clear_bit_by_one(),
                     Event::ByteTransmitted => w.tx_send_empty().clear_bit_by_one(),
                     Event::TransComplete => w.trans_complete().clear_bit_by_one(),
-                    Event::SlaveAddressed => w.slave_addressed().clear_bit_by_one(),
-                    Event::StopDetected => w.trans_complete().clear_bit_by_one(),
-                    Event::StartDetected => w.slave_addressed().clear_bit_by_one(),
+                    Event::SlaveAddressed => w.trans_complete().clear_bit_by_one(),
+                    Event::StopDetected => w.end_detect().clear_bit_by_one(),
+                    Event::StartDetected => w.trans_start().clear_bit_by_one(),
                 };
             }
             w
@@ -1053,7 +1053,7 @@ impl Driver<'_> {
             }
             
             #[cfg(esp32)]
-            if !status.rx_fifo_empty().bit_is_set() {
+            if !(status.rxfifo_cnt().bits() == 0) {
                 break;
             }
         }
@@ -1074,7 +1074,7 @@ impl Driver<'_> {
             
             #[cfg(esp32)]
             {
-                if status.rx_fifo_empty().bit_is_set() {
+                if status.rxfifo_cnt().bits() == 0 {
                     break;
                 }
             }
@@ -1199,13 +1199,13 @@ for_each_i2c_slave!(
     };
 );
 
-crate::any_peripheral! {
+any_peripheral! {
     /// Any I2C peripheral.
     pub peripheral AnyI2c<'d> {
         #[cfg(i2c_slave_i2c0)]
-        I2c0(crate::peripherals::I2C0<'d>),
+        I2C0(crate::peripherals::I2C0<'d>),
         #[cfg(i2c_slave_i2c1)]
-        I2c1(crate::peripherals::I2C1<'d>),
+        I2C1(crate::peripherals::I2C1<'d>),
     }
 }
 
@@ -1239,31 +1239,31 @@ impl AnyI2c<'_> {
     }
 }
 
-mod any {
-    use super::*;
+// mod any {
+//     use super::*;
 
-    pub trait Degrade {
-        fn degrade(self) -> AnyI2c<'static>;
-    }
+//     pub trait Degrade {
+//         fn degrade(self) -> AnyI2c<'static>;
+//     }
 
-    impl Degrade for AnyI2c<'_> {
-        fn degrade(self) -> AnyI2c<'static> {
-            AnyI2c::I2c0(unsafe { core::mem::transmute(self) })
-        }
-    }
+//     impl Degrade for AnyI2c<'_> {
+//         fn degrade(self) -> AnyI2c<'static> {
+//             AnyI2c::I2c0(unsafe { core::mem::transmute(self) })
+//         }
+//     }
 
-    macro_rules! impl_degrade {
-        ($inst:ident) => {
-            impl Degrade for crate::peripherals::$inst<'_> {
-                fn degrade(self) -> AnyI2c<'static> {
-                    AnyI2c::$inst(unsafe { core::mem::transmute(self) })
-                }
-            }
-        };
-    }
+//     macro_rules! impl_degrade {
+//         ($inst:ident) => {
+//             impl Degrade for crate::peripherals::$inst<'_> {
+//                 fn degrade(self) -> AnyI2c<'static> {
+//                     AnyI2c::$inst(unsafe { core::mem::transmute(self) })
+//                 }
+//             }
+//         };
+//     }
 
-    #[cfg(i2c_master_i2c0)]
-    impl_degrade!(I2c0);
-    #[cfg(i2c_master_i2c1)]
-    impl_degrade!(I2c1);
-}
+//     #[cfg(i2c_master_i2c0)]
+//     impl_degrade!(I2c0);
+//     #[cfg(i2c_master_i2c1)]
+//     impl_degrade!(I2c1);
+// }
