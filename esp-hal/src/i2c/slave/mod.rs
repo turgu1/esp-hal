@@ -96,18 +96,32 @@
 //! # {after_snippet}
 //! ```
 //!
-//! ### Important: FIFO Size Limitation
+//! ### Important: FIFO Size Limitation & Clock Stretching Compatibility
 //!
 //! The hardware FIFO is limited to 32 bytes. This means:
 //! - **Reading**: A single `read()` call can only retrieve up to 32 bytes from the FIFO
-//! - **For packets ≥ 32 bytes**: You **must** use interrupt-driven reception with `RxFifoFull` event
+//! - **For packets ≥ 32 bytes**: You may need interrupt-driven reception with `RxFifoFull` event
 //! - **Writing**: A single `write()` call can only load up to 32 bytes into the TX FIFO
-//! - **Critical**: Without clock stretching (disabled on ESP32-C6), a 32-byte packet in blocking
-//!   mode will be NACKed because the FIFO fills completely before software can read it
 //!
-//! **Why 32-byte packets NACK**: When the master sends byte 32, the FIFO is already full with bytes
-//! 1-31, so the hardware has no space and must NACK. The solution is to use interrupts so software
-//! can read data as it arrives (FIFO watermark set at 30 bytes).
+//! **Clock Stretching Compatibility Warning**: Clock stretching on ESP32-C6 slave can cause
+//! bus hangs when used with ESP32 (original) as I2C master. The ESP32 master peripheral has
+//! limited clock stretching support and may timeout or lock up when the slave holds SCL low,
+//! leaving both SCL and SDA stuck low indefinitely.
+//!
+//! **Recommendation for ESP32 master**: Disable clock stretching:
+//! ```rust, no_run
+//! # {before_snippet}
+//! # use esp_hal::i2c::slave::Config;
+//! let config = Config::default()
+//!     .with_clock_stretch_enable(false)
+//!     .with_address(0x55.into());
+//! # {after_snippet}
+//! ```
+//!
+//! **For packets < 30 bytes**: Blocking `read()` works fine without clock stretching.
+//!
+//! **For packets ≥ 30 bytes without clock stretching**: The FIFO can overflow causing NACK.
+//! Use interrupt-driven approach to read data as it arrives (FIFO watermark triggers at 30 bytes).
 //!
 //! For packets of 32 bytes or more, use interrupt-driven approach:
 //!
@@ -1512,11 +1526,19 @@ impl Driver<'_> {
         // Configure clock stretching
         #[cfg(esp32c6)]
         self.regs().scl_stretch_conf().modify(|_, w| {
-            // Enable clock stretching for ESP32-C6
-            // This allows the slave to hold SCL low to slow down the master when needed
+            // WARNING: Clock stretching can cause bus hangs with certain I2C masters
+            // particularly ESP32 (original), which has poor clock stretching support.
+            // When ESP32 master encounters a slave holding SCL low, it may timeout or
+            // lock up, leaving the bus with both SCL and SDA held low indefinitely.
+            //
+            // RECOMMENDATION: Disable clock stretching when using ESP32 as master:
+            // Config::default().with_clock_stretch_enable(false)
+            //
+            // For large packets (≥30 bytes) without clock stretching, use interrupt-driven
+            // or async reception to prevent FIFO overflow.
             w.slave_scl_stretch_en().bit(config.clock_stretch_enable);
             unsafe { 
-                w.stretch_protect_num().bits(1000); // Set reasonable stretch timeout
+                w.stretch_protect_num().bits(1000); // Stretch timeout protection
             }
             // Disable byte ACK control features that can cause clock holding
             w.slave_byte_ack_ctl_en().clear_bit();
@@ -1818,6 +1840,8 @@ impl Driver<'_> {
         self.regs().int_clr().write(|w| unsafe { w.bits(0x1FFF) });
         
         // Configure clock stretching per config setting
+        // NOTE: See setup() for important compatibility warnings about clock stretching
+        // with ESP32 master peripherals
         self.regs().scl_stretch_conf().modify(|_, w| {
             w.slave_scl_stretch_en().bit(self.config.config.clock_stretch_enable);
             unsafe {

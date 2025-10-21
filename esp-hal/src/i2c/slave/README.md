@@ -459,10 +459,28 @@ The implementation handles chip-specific register differences using conditional 
 Clock stretching allows the slave to hold the SCL line low to slow down the master:
 - Not available on ESP32
 - Configurable on newer chips (S2, S3, C3, C6, H2)
-- **Enabled by default** on all supported variants (S2, S3, C3, C6, H2)
+- **Enabled by default** on variants that support it
 - Can be disabled via `Config::default().with_clock_stretch_enable(false)` if needed
 - When enabled, allows slave to hold SCL low when it needs more time (e.g., FIFO full)
-- **Note**: For 32-byte packets, clock stretching helps prevent NACK when FIFO fills
+
+**⚠️ IMPORTANT - Master Compatibility**: Clock stretching on ESP32-C6 slave can cause bus hangs
+when used with certain I2C masters, particularly **ESP32 (original)**. The ESP32 master peripheral
+has limited support for clock stretching and may timeout or lock up when the slave holds SCL low.
+
+**Symptoms of master incompatibility**:
+- Bus hangs with both SCL and SDA held low
+- Master timeout errors
+- No recovery without power cycle or bus reset
+
+**Recommendation**: When using ESP32-C6 as a slave with ESP32 master, **disable clock stretching**:
+```rust
+let config = Config::default()
+    .with_clock_stretch_enable(false)
+    .with_address(0x55.into());
+```
+
+For packets ≥30 bytes without clock stretching, use interrupt-driven or async reception to prevent
+FIFO overflow and NACK.
 
 ### Filters
 
