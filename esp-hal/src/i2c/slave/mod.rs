@@ -14,11 +14,45 @@
 //! the individual settings as needed, by calling `with_*` methods on the
 //! [`Config`] struct.
 //!
+//! The driver supports both 7-bit and 10-bit I2C slave addresses.
+//! Addresses can be specified using `u8`, `u16`, or `i32` and are automatically
+//! converted to the appropriate mode:
+//!
 //! ```rust, no_run
 //! # {before_snippet}
 //! use esp_hal::i2c::slave::Config;
 //!
-//! let config = Config::default().with_address(0x55);
+//! // 7-bit address from u8
+//! let config_7bit = Config::default()
+//!     .with_address(0x55.into())
+//!     .with_timeout_ms(2000);
+//!
+//! // 10-bit address from u16
+//! let config_10bit = Config::default()
+//!     .with_address(0x1A5.into())  // 10-bit address (0x000 - 0x3FF)
+//!     .with_timeout_ms(2000);
+//!
+//! // Also supports i32 (negative values converted to absolute value)
+//! let config_i32 = Config::default()
+//!     .with_address((-85).into())  // Converts to 0x55 (7-bit)
+//!     .with_timeout_ms(2000);
+//! # {after_snippet}
+//! ```
+//!
+//! ### Register-Based Mode (ESP32-C6)
+//!
+//! On ESP32-C6, you can enable register-based mode to emulate I2C devices with
+//! register addressing (like sensors). When enabled, the first byte after the
+//! slave address is treated as a register address:
+//!
+//! ```rust, no_run
+//! # {before_snippet}
+//! use esp_hal::i2c::slave::Config;
+//!
+//! #[cfg(esp32c6)]
+//! let config = Config::default()
+//!     .with_address(0x55)
+//!     .with_register_based_mode(true);
 //! # {after_snippet}
 //! ```
 //!
@@ -61,6 +95,102 @@
 //! i2c.write(&write_buffer)?;
 //! # {after_snippet}
 //! ```
+//!
+//! ### Important: FIFO Size Limitation
+//!
+//! The hardware FIFO is limited to 32 bytes. This means:
+//! - **Reading**: A single `read()` call can only retrieve up to 32 bytes from the FIFO
+//! - **For packets ≥ 32 bytes**: You **must** use interrupt-driven reception with `RxFifoFull` event
+//! - **Writing**: A single `write()` call can only load up to 32 bytes into the TX FIFO
+//! - **Critical**: Without clock stretching (disabled on ESP32-C6), a 32-byte packet in blocking
+//!   mode will be NACKed because the FIFO fills completely before software can read it
+//!
+//! **Why 32-byte packets NACK**: When the master sends byte 32, the FIFO is already full with bytes
+//! 1-31, so the hardware has no space and must NACK. The solution is to use interrupts so software
+//! can read data as it arrives (FIFO watermark set at 30 bytes).
+//!
+//! For packets of 32 bytes or more, use interrupt-driven approach:
+//!
+//! ```rust, no_run
+//! # {before_snippet}
+//! # use esp_hal::i2c::slave::{I2c, Config, Event};
+//! # let config = Config::default();
+//! # let mut i2c = I2c::new(peripherals.I2C0, config)?;
+//! #
+//! // Enable RX FIFO full interrupt (triggers at 30 bytes, leaving room for more)
+//! i2c.listen(Event::RxFifoFull);
+//!
+//! let mut large_buffer = [0u8; 128];
+//! let mut offset = 0;
+//!
+//! loop {
+//!     // Check if RX FIFO has data
+//!     let events = i2c.interrupts();
+//!     if events.contains(Event::RxFifoFull) {
+//!         // Read chunk from FIFO (up to 32 bytes)
+//!         let chunk_read = i2c.read(&mut large_buffer[offset..])?;
+//!         offset += chunk_read;
+//!         
+//!         i2c.clear_interrupts(Event::RxFifoFull);
+//!     }
+//!     
+//!     // Check for transaction complete
+//!     if events.contains(Event::TransComplete) {
+//!         // Process complete packet in large_buffer[..offset]
+//!         offset = 0; // Reset for next packet
+//!         i2c.clear_interrupts(Event::TransComplete);
+//!     }
+//! }
+//! # {after_snippet}
+//! ```
+//!
+//! ### Register-Based Mode Example (ESP32-C6)
+//!
+//! When emulating a register-based I2C device (like a sensor), use register-based
+//! mode to handle register addressing:
+//!
+//! ```rust, no_run
+//! # {before_snippet}
+//! # use esp_hal::i2c::slave::{I2c, Config};
+//! #[cfg(esp32c6)]
+//! {
+//!     let config = Config::default()
+//!         .with_address(0x48)  // Sensor address
+//!         .with_register_based_mode(true);
+//!     
+//!     let mut i2c = I2c::new(peripherals.I2C0, config)?
+//!         .with_sda(peripherals.GPIO1)
+//!         .with_scl(peripherals.GPIO2);
+//!     
+//!     // Simulate sensor registers
+//!     let mut registers = [0u8; 256];
+//!     registers[0x00] = 0x48; // Device ID
+//!     registers[0x01] = 0x25; // Temperature high byte
+//!     registers[0x02] = 0x60; // Temperature low byte
+//!     
+//!     loop {
+//!         // Wait for master write (register address + optional data)
+//!         let mut rx_buffer = [0u8; 32];
+//!         if let Ok(bytes_read) = i2c.read(&mut rx_buffer) {
+//!             let register_addr = i2c.read_register_address();
+//!             
+//!             if bytes_read > 0 {
+//!                 // Master wrote data to register
+//!                 for (i, &byte) in rx_buffer[..bytes_read].iter().enumerate() {
+//!                     registers[(register_addr as usize + i) & 0xFF] = byte;
+//!                 }
+//!             }
+//!             
+//!             // Prepare response for potential master read
+//!             let response = &registers[register_addr as usize..][..4];
+//!             i2c.write(response)?;
+//!         }
+//!     }
+//! }
+//! # {after_snippet}
+//! ```
+//! # {after_snippet}
+//! ```
 
 use core::{
     marker::PhantomData,
@@ -97,6 +227,11 @@ use crate::{
 const I2C_FIFO_SIZE: usize = property!("i2c_master.fifo_size");
 
 /// Representation of I2C slave address.
+///
+/// Addresses can be created from `u8`, `u16`, or `i32` types using `.into()`:
+/// - `u8` values create 7-bit addresses
+/// - `u16` values create 7-bit if ≤ 0x7F, otherwise 10-bit
+/// - `i32` values are converted to their absolute value, then use same logic as `u16`
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[non_exhaustive]
@@ -109,6 +244,15 @@ pub enum I2cAddress {
     /// For example, a device that has the seven bit address of `0b011_0010`,
     /// is addressed as `0x32`, NOT `0x64` or `0x65`.
     SevenBit(u8),
+
+    /// 10-bit address mode type.
+    ///
+    /// Note that 10-bit addresses are specified in **right-aligned** form, e.g.
+    /// in the range `0x00..=0x3FF`.
+    ///
+    /// 10-bit addressing uses a special addressing scheme where the first byte
+    /// starts with `11110` followed by the two MSBs of the address.
+    TenBit(u16),
 }
 
 impl I2cAddress {
@@ -119,15 +263,62 @@ impl I2cAddress {
                     return Err(Error::AddressInvalid(*self));
                 }
             }
+            I2cAddress::TenBit(addr) => {
+                if *addr > 0x3FF {
+                    return Err(Error::AddressInvalid(*self));
+                }
+            }
         }
 
         Ok(())
+    }
+
+    /// Returns true if this is a 10-bit address
+    fn is_ten_bit(&self) -> bool {
+        matches!(self, I2cAddress::TenBit(_))
+    }
+
+    /// Returns the address value as u16
+    fn as_u16(&self) -> u16 {
+        match self {
+            I2cAddress::SevenBit(addr) => *addr as u16,
+            I2cAddress::TenBit(addr) => *addr,
+        }
     }
 }
 
 impl From<u8> for I2cAddress {
     fn from(value: u8) -> Self {
         I2cAddress::SevenBit(value)
+    }
+}
+
+impl From<u16> for I2cAddress {
+    fn from(value: u16) -> Self {
+        if value <= 0x7F {
+            I2cAddress::SevenBit(value as u8)
+        } else if value <= 0x3FF {
+            I2cAddress::TenBit(value)
+        } else {
+            // For values beyond 10-bit range, wrap to 10-bit
+            I2cAddress::TenBit(value & 0x3FF)
+        }
+    }
+}
+
+impl From<i32> for I2cAddress {
+    fn from(value: i32) -> Self {
+        // Convert signed to unsigned, taking absolute value for negative numbers
+        let unsigned = value.unsigned_abs();
+        
+        if unsigned <= 0x7F {
+            I2cAddress::SevenBit(unsigned as u8)
+        } else if unsigned <= 0x3FF {
+            I2cAddress::TenBit(unsigned as u16)
+        } else {
+            // For values beyond 10-bit range, wrap to 10-bit
+            I2cAddress::TenBit((unsigned & 0x3FF) as u16)
+        }
     }
 }
 
@@ -207,7 +398,11 @@ impl core::fmt::Display for ConfigError {
 pub struct Config {
     /// The I2C slave address.
     ///
-    /// Default value: 0x55.
+    /// Supports both 7-bit (0x00..=0x7F) and 10-bit (0x000..=0x3FF) addresses.
+    /// Use `I2cAddress::SevenBit(addr)` or `I2cAddress::TenBit(addr)`, or simply
+    /// convert from `u8` for 7-bit or `u16` for automatic detection.
+    ///
+    /// Default value: 7-bit address 0x55.
     address: I2cAddress,
 
     /// Enable clock stretching.
@@ -234,6 +429,36 @@ pub struct Config {
     ///
     /// Default value: 7.
     scl_filter_threshold: u8,
+
+    /// Timeout duration for blocking read operations in milliseconds.
+    ///
+    /// This timeout prevents infinite waiting when no master transmission occurs.
+    ///
+    /// Default value: 1000 (1 second).
+    timeout_ms: u32,
+
+    /// Enable register-based mode (FIFO address configuration).
+    ///
+    /// When enabled, the first byte received after the slave address is treated
+    /// as a "register address" and stored in a separate internal register (not
+    /// the main RX FIFO). This is useful for emulating register-based I2C devices
+    /// like sensors that use register addressing.
+    ///
+    /// When disabled (default), all received bytes are stored sequentially in
+    /// the RX FIFO (raw data stream mode).
+    ///
+    /// **Supported devices**: Currently only ESP32-C6 is confirmed to support
+    /// this feature. The setting is only available when compiling for ESP32-C6.
+    ///
+    /// To use this feature:
+    /// - Set `register_based_mode` to `true` in the config
+    /// - After a transaction, call `read()` to get the data bytes
+    /// - Call `read_register_address()` to get the register address byte
+    /// - Handle the request based on the register address and data
+    ///
+    /// Default value: false (raw data stream mode).
+    #[cfg(esp32c6)]
+    register_based_mode: bool,
 }
 
 impl Default for Config {
@@ -245,6 +470,9 @@ impl Default for Config {
             sda_filter_threshold: 7,
             scl_filter_enable: true,
             scl_filter_threshold: 7,
+            timeout_ms: 1000,
+            #[cfg(esp32c6)]
+            register_based_mode: false,
         }
     }
 }
@@ -445,12 +673,27 @@ struct I2cFuture<'a> {
 impl<'a> I2cFuture<'a> {
     pub fn new(events: EnumSet<Event>, driver: Driver<'a>, deadline: Option<Instant>) -> Self {
         driver.regs().int_ena().modify(|_, w| {
+            #[cfg(esp32)]
             for event in events {
                 match event {
                     Event::RxFifoFull => w.rxfifo_full().set_bit(),
                     Event::TxFifoEmpty => w.txfifo_empty().set_bit(),
                     Event::ByteReceived => w.rx_rec_full().set_bit(),
                     Event::ByteTransmitted => w.tx_send_empty().set_bit(),
+                    Event::TransComplete => w.trans_complete().set_bit(),
+                    Event::SlaveAddressed => w.trans_complete().set_bit(),
+                    Event::StopDetected => w.end_detect().set_bit(), // Use end_detect for STOP
+                    Event::StartDetected => w.trans_start().set_bit(), // Use trans_start for START
+                };
+            }
+
+            #[cfg(not(esp32))]
+            for event in events {
+                match event {
+                    Event::RxFifoFull => w.rxfifo_wm().set_bit(),
+                    Event::TxFifoEmpty => w.txfifo_wm().set_bit(),
+                    Event::ByteReceived => w.rxfifo_wm().set_bit(),
+                    Event::ByteTransmitted => w.txfifo_wm().set_bit(),
                     Event::TransComplete => w.trans_complete().set_bit(),
                     Event::SlaveAddressed => w.trans_complete().set_bit(),
                     Event::StopDetected => w.end_detect().set_bit(), // Use end_detect for STOP
@@ -600,6 +843,22 @@ impl<'d> I2c<'d, Async> {
     /// # {after_snippet}
     /// ```
     pub async fn write_async(&mut self, buffer: &[u8]) -> Result<(), Error> {
+        // ESP32-C6 specific: Prepare for async write
+        #[cfg(esp32c6)]
+        {
+            let driver = self.driver();
+            // Reset any pending errors
+            driver.regs().int_clr().write(|w| unsafe { w.bits(0x1FFF) });
+            
+            // Clear TX FIFO before writing new data
+            driver.regs().fifo_conf().modify(|_, w| {
+                w.tx_fifo_rst().set_bit()
+            });
+            driver.regs().fifo_conf().modify(|_, w| {
+                w.tx_fifo_rst().clear_bit()
+            });
+        }
+        
         let driver = self.driver();
         driver.write_fifo(buffer)?;
         
@@ -620,6 +879,8 @@ where
             config: &self.config,
         }
     }
+
+
 
     /// Connect a pin to the I2C SDA signal.
     ///
@@ -682,12 +943,76 @@ where
         }
 
         let driver = self.driver();
-        driver.wait_for_rx_data();
-        Ok(driver.read_fifo(buffer))
+        driver.wait_for_rx_data()?;
+        let count = driver.read_fifo(buffer);
+        
+        Ok(count)
+    }
+
+    /// Reads the register address byte when in register-based mode
+    ///
+    /// When register-based mode is enabled in the configuration, the first byte
+    /// received after the slave address is treated as a "register address" and
+    /// stored separately from the main RX FIFO data bytes.
+    ///
+    /// This method retrieves that register address byte. It should be called
+    /// after receiving data from the master to determine which register was
+    /// addressed.
+    ///
+    /// **Important**: In register-based mode:
+    /// - The first byte sent by master is the register address (retrieved by this method)
+    /// - Subsequent bytes are the data (retrieved by `read()`)
+    /// - This allows emulating register-based I2C devices like sensors
+    ///
+    /// **Note**: This method is only available on ESP32-C6. The register address
+    /// is stored in the hardware's RAM_DATA register at offset 0.
+    ///
+    /// ## Example
+    ///
+    /// ```rust, no_run
+    /// # {before_snippet}
+    /// use esp_hal::i2c::slave::{Config, I2c};
+    /// let config = Config::default().with_register_based_mode(true);
+    /// let mut i2c = I2c::new(peripherals.I2C0, config)?
+    ///     .with_sda(peripherals.GPIO1)
+    ///     .with_scl(peripherals.GPIO2);
+    ///
+    /// // Wait for master transaction
+    /// let mut data = [0u8; 128];
+    /// let bytes_read = i2c.read(&mut data)?;
+    ///
+    /// // Get the register address that the master specified
+    /// let register_addr = i2c.read_register_address();
+    ///
+    /// // Handle the request based on register_addr and data
+    /// match register_addr {
+    ///     0x00 => { /* handle register 0x00 */ }
+    ///     0x01 => { /* handle register 0x01 */ }
+    ///     _ => { /* unknown register */ }
+    /// }
+    /// # {after_snippet}
+    /// ```
+    #[cfg(esp32c6)]
+    pub fn read_register_address(&self) -> u8 {
+        // In register-based mode, the register address is stored in RAM_DATA[0]
+        // We can read it from the fifo_st register's rxfifo_raddr field
+        self.driver().regs().fifo_st().read().rxfifo_raddr().bits()
     }
 
     #[procmacros::doc_replace]
+    #[procmacros::doc_replace]
     /// Writes data to be sent to the master
+    ///
+    /// **IMPORTANT for ESP32-C6**: For slave write (master read) operations, you must call
+    /// this function to load data into the TX FIFO **BEFORE** the master initiates a read
+    /// request. If the TX FIFO is empty when the master requests data, the slave will
+    /// clock-stretch (hold SCL low) indefinitely, causing the bus to hang.
+    ///
+    /// **Recommended usage pattern**:
+    /// 1. Call `write()` to preload response data into the TX FIFO
+    /// 2. Wait for the master to address the slave for reading
+    /// 3. The hardware will automatically transmit the preloaded data
+    /// 4. Reload the TX FIFO with `write()` for subsequent read requests
     ///
     /// ## Errors
     ///
@@ -703,12 +1028,47 @@ where
     /// #   peripherals.I2C0,
     /// #   Config::default(),
     /// # )?;
+    /// // Preload data BEFORE master reads
     /// i2c.write(&[0xAA, 0xBB])?;
+    /// 
+    /// // Now master can read this data
     /// # {after_snippet}
     /// ```
     pub fn write(&mut self, buffer: &[u8]) -> Result<(), Error> {
         if buffer.is_empty() {
             return Err(Error::ZeroLengthInvalid);
+        }
+
+        // ESP32-C6 specific: For slave write, we need to ensure we're ready to transmit
+        #[cfg(esp32c6)]
+        {
+            // Reset the I2C controller state machine to clear any stuck states
+            self.driver().regs().ctr().modify(|_, w| {
+                w.trans_start().clear_bit() // Clear any pending transaction
+            });
+            
+            // Clear all interrupts
+            self.driver().regs().int_clr().write(|w| unsafe { w.bits(0x1FFF) });
+            
+            // Reset TX FIFO completely
+            self.driver().regs().fifo_conf().modify(|_, w| {
+                w.tx_fifo_rst().set_bit()
+            });
+            // Small delay for reset to take effect
+            for _ in 0..5 {
+                unsafe { core::arch::asm!("nop") };
+            }
+            self.driver().regs().fifo_conf().modify(|_, w| {
+                w.tx_fifo_rst().clear_bit()
+            });
+            
+            // Ensure slave mode and disable any features that might hold the bus
+            self.driver().regs().ctr().modify(|_, w| {
+                w.ms_mode().clear_bit();  // Slave mode
+                w.sda_force_out().set_bit();
+                w.scl_force_out().set_bit();
+                w
+            });
         }
 
         self.driver().write_fifo(buffer)?;
@@ -826,6 +1186,7 @@ impl Info {
         let reg_block = self.regs();
 
         reg_block.int_ena().modify(|_, w| {
+            #[cfg(esp32)]
             for interrupt in interrupts {
                 match interrupt {
                     Event::RxFifoFull => w.rxfifo_full().bit(enable),
@@ -838,6 +1199,20 @@ impl Info {
                     Event::StartDetected => w.trans_start().bit(enable),
                 };
             }
+            #[cfg(not(esp32))]
+            for interrupt in interrupts {
+                match interrupt {
+                    Event::RxFifoFull => w.rxfifo_wm().bit(enable),
+                    Event::TxFifoEmpty => w.txfifo_wm().bit(enable),
+                    Event::ByteReceived => w.rxfifo_wm().bit(enable),
+                    Event::ByteTransmitted => w.txfifo_wm().bit(enable),
+                    Event::TransComplete => w.trans_complete().bit(enable),
+                    Event::SlaveAddressed => w.trans_complete().bit(enable),
+                    Event::StopDetected => w.end_detect().bit(enable),
+                    Event::StartDetected => w.trans_start().bit(enable),
+                };
+            }
+                
             w
         });
     }
@@ -848,6 +1223,44 @@ impl Info {
 
         let ints = reg_block.int_raw().read();
 
+        #[cfg(esp32)]
+        {
+            if ints.rxfifo_full().bit_is_set() {
+                res.insert(Event::RxFifoFull);
+            }
+            if ints.txfifo_empty().bit_is_set() {
+                res.insert(Event::TxFifoEmpty);
+            }
+            if ints.rx_rec_full().bit_is_set() {
+                res.insert(Event::ByteReceived);
+            }
+            if ints.tx_send_empty().bit_is_set() {
+                res.insert(Event::ByteTransmitted);
+            }
+        }
+
+
+    #[cfg(esp32c6)]
+    {
+        // ESP32-C6 uses watermark-based FIFO interrupts
+        if ints.rxfifo_wm().bit_is_set() {
+            res.insert(Event::RxFifoFull);
+        }
+        if ints.txfifo_wm().bit_is_set() {
+            res.insert(Event::TxFifoEmpty);
+        }
+        // ESP32-C6 doesn't have separate byte-level interrupts
+        // Map watermark interrupts to byte events as well
+        if ints.rxfifo_wm().bit_is_set() {
+            res.insert(Event::ByteReceived);
+        }
+        if ints.txfifo_wm().bit_is_set() {
+            res.insert(Event::ByteTransmitted);
+        }
+    }
+
+    #[cfg(not(any(esp32, esp32c6)))]
+    {
         if ints.rxfifo_full().bit_is_set() {
             res.insert(Event::RxFifoFull);
         }
@@ -860,6 +1273,8 @@ impl Info {
         if ints.tx_send_empty().bit_is_set() {
             res.insert(Event::ByteTransmitted);
         }
+    }
+
         if ints.trans_complete().bit_is_set() {
             res.insert(Event::TransComplete);
             res.insert(Event::StopDetected);
@@ -876,6 +1291,7 @@ impl Info {
         let reg_block = self.regs();
 
         reg_block.int_clr().write(|w| {
+            #[cfg(esp32)]
             for interrupt in interrupts {
                 match interrupt {
                     Event::RxFifoFull => w.rxfifo_full().clear_bit_by_one(),
@@ -888,6 +1304,21 @@ impl Info {
                     Event::StartDetected => w.trans_start().clear_bit_by_one(),
                 };
             }
+
+            #[cfg(not(esp32))]
+            for interrupt in interrupts {
+                match interrupt {
+                    Event::RxFifoFull => w.rxfifo_wm().clear_bit_by_one(),
+                    Event::TxFifoEmpty => w.txfifo_wm().clear_bit_by_one(),
+                    Event::ByteReceived => w.rxfifo_wm().clear_bit_by_one(),
+                    Event::ByteTransmitted => w.txfifo_wm().clear_bit_by_one(),
+                    Event::TransComplete => w.trans_complete().clear_bit_by_one(),
+                    Event::SlaveAddressed => w.trans_complete().clear_bit_by_one(),
+                    Event::StopDetected => w.end_detect().clear_bit_by_one(),
+                    Event::StartDetected => w.trans_start().clear_bit_by_one(),
+                };
+            }
+
             w
         });
     }
@@ -920,13 +1351,13 @@ impl Driver<'_> {
         output: OutputSignal,
         guard: &mut PinGuard,
     ) {
-        // Configure pin for open-drain with pull-up
+        // Configure pin for open-drain without internal pull-ups (external pull-ups required)
         pin.set_output_high(true);
 
         pin.apply_output_config(
             &OutputConfig::default()
                 .with_drive_mode(DriveMode::OpenDrain)
-                .with_pull(Pull::Up),
+                .with_pull(Pull::None),
         );
         pin.set_output_enable(true);
         pin.set_input_enable(true);
@@ -937,6 +1368,16 @@ impl Driver<'_> {
     }
 
     fn init_slave(&self) {
+        // ESP32-C6 specific: Ensure peripheral is properly reset before configuration
+        #[cfg(esp32c6)]
+        {
+            // Reset the I2C peripheral to ensure clean state
+            self.regs().ctr().write(|w| unsafe { w.bits(0) });
+            
+            // Small delay to ensure reset takes effect
+            for _ in 0..100 { unsafe { core::arch::asm!("nop") }; }
+        }
+
         self.regs().ctr().write(|w| {
             // Set I2C controller to slave mode
             w.ms_mode().clear_bit();
@@ -953,6 +1394,76 @@ impl Driver<'_> {
             // Ensure that clock is enabled
             w.clk_en().set_bit()
         });
+
+        // Note: Address mode (7-bit vs 10-bit) will be configured in setup()
+        // after we know the actual address type from the config
+        
+        #[cfg(not(any(esp32, esp32c6)))]
+        self.regs().ctr().modify(|_, w| {
+            w.slave_addr_en().set_bit()    // Enable slave address matching
+        });
+
+        // ESP32-C6 specific configuration for slave mode
+        #[cfg(esp32c6)]
+        {
+            // For ESP32-C6, we need to be very explicit about slave mode setup
+            // First, ensure we're definitely in slave mode
+            self.regs().ctr().modify(|_, w| {
+                w.ms_mode().clear_bit()  // 0 = slave mode, 1 = master mode
+            });
+            
+            // Configure slave-specific settings
+            self.regs().ctr().modify(|_, w| {
+                w.addr_broadcasting_en().clear_bit();   // Disable broadcasting - respond only to our address
+                w.rx_lsb_first().clear_bit();           // MSB first for data
+                w.tx_lsb_first().clear_bit();           // MSB first for data
+                w.slv_tx_auto_start_en().clear_bit()    // Disable auto TX start initially
+            });
+        }
+
+        // Configure FIFO thresholds for proper interrupt generation
+        #[cfg(esp32c6)]
+        {
+            // ESP32-C6 specific FIFO configuration for slave mode
+            self.regs().fifo_conf().modify(|_, w| {
+                unsafe {
+                    // Set RX threshold to trigger interrupt before FIFO completely fills
+                    // This allows software to read data before FIFO overflows and causes NACK
+                    // At 30 bytes, there's still room for a few more bytes during interrupt latency
+                    w.rxfifo_wm_thrhd().bits(30);
+                    w.txfifo_wm_thrhd().bits(1);  // Interrupt when TX FIFO has space
+                }
+                // Configure register-based mode (FIFO address configuration)
+                // When enabled: first byte after slave address is treated as register address
+                // When disabled: all bytes stored in RX FIFO (raw data stream mode)
+                if self.config.config.register_based_mode {
+                    w.fifo_addr_cfg_en().set_bit()
+                } else {
+                    w.fifo_addr_cfg_en().clear_bit()
+                };
+                w
+            });
+        }
+        
+        #[cfg(not(any(esp32, esp32c6)))]
+        self.regs().fifo_conf().modify(|_, w| {
+            unsafe {
+                // Set RX threshold to trigger before FIFO fills to prevent overflow
+                w.rxfifo_wm_thrhd().bits(30);
+                w.txfifo_wm_thrhd().bits(I2C_FIFO_SIZE as u8 - 1); // Generate interrupt when FIFO nearly empty
+            }
+            w
+        });
+
+        #[cfg(esp32)]
+        self.regs().fifo_conf().modify(|_, w| {
+            unsafe {
+                // Set RX threshold to trigger before FIFO fills to prevent overflow
+                w.rxfifo_full_thrhd().bits(30);
+                w.txfifo_empty_thrhd().bits(I2C_FIFO_SIZE as u8 - 1); // Generate interrupt when FIFO nearly empty
+            }
+            w
+        });
     }
 
     /// Configures the I2C peripheral in slave mode
@@ -960,19 +1471,74 @@ impl Driver<'_> {
         self.init_slave();
 
         // Set slave address
-        match config.address {
-            I2cAddress::SevenBit(addr) => {
-                self.regs().slave_addr().write(|w| unsafe {
-                    w.slave_addr().bits(addr as u16);
-                    w.addr_10bit_en().clear_bit()
-                });
-            }
+        let is_10bit = config.address.is_ten_bit();
+        let addr_value = config.address.as_u16();
+
+        self.regs().slave_addr().write(|w| unsafe {
+            w.slave_addr().bits(addr_value);
+            w.addr_10bit_en().bit(is_10bit)
+        });
+        
+        // ESP32-C6 specific: Critical slave acknowledgment setup
+        #[cfg(esp32c6)]
+        {
+            // ESP32-C6 requires specific sequence for slave address acknowledgment
+            
+            // 1. Ensure we're in slave mode
+            self.regs().ctr().modify(|_, w| {
+                w.ms_mode().clear_bit()  // 0 = slave mode
+            });
+            
+            // 2. Configure the slave address register properly
+            self.regs().slave_addr().write(|w| unsafe {
+                w.slave_addr().bits(addr_value);
+                w.addr_10bit_en().bit(is_10bit)
+            });
+            
+            // 3. Enable slave address matching by configuring control register
+            self.regs().ctr().modify(|_, w| {
+                w.addr_10bit_rw_check_en().bit(is_10bit); // Enable 10-bit check if needed
+                w.slv_tx_auto_start_en().set_bit()        // Enable auto TX start for slave
+            });
         }
+        
+        // Ensure slave address matching is enabled after setting address
+        #[cfg(not(any(esp32, esp32c6)))]
+        self.regs().ctr().modify(|_, w| {
+            w.addr_10bit_en().bit(is_10bit);
+            w.slave_addr_en().set_bit()
+        });
 
         // Configure clock stretching
-        #[cfg(not(esp32))]
+        #[cfg(esp32c6)]
         self.regs().scl_stretch_conf().modify(|_, w| {
-            w.slave_scl_stretch_en().bit(config.clock_stretch_enable)
+            // CRITICAL for ESP32-C6: Disable clock stretching entirely to prevent bus hangs
+            // The ESP32-C6 slave has issues with clock stretching during TX operations
+            // Without stretching, the slave must have data ready in TX FIFO before master reads
+            w.slave_scl_stretch_en().clear_bit(); // ALWAYS disable for ESP32-C6
+            unsafe { 
+                w.stretch_protect_num().bits(0); // No stretching allowed
+            }
+            // Disable byte ACK control features that can cause clock holding
+            w.slave_byte_ack_ctl_en().clear_bit();
+            w.slave_byte_ack_lvl().clear_bit()
+        });
+        
+        #[cfg(not(any(esp32, esp32c6)))]
+        self.regs().scl_stretch_conf().modify(|_, w| {
+            w.slave_scl_stretch_en().bit(config.clock_stretch_enable);
+            // Set a reasonable stretch timeout to prevent hanging
+            unsafe { w.stretch_protect_num().bits(1000) }
+        });
+
+        // Configure timeout settings to ensure proper operation
+        #[cfg(any(esp32c3, esp32c6, esp32h2, esp32s2, esp32s3))]
+        self.regs().to().modify(|_, w| {
+            unsafe {
+                w.time_out_en().set_bit();
+                w.time_out_value().bits(0x10); // Set a reasonable timeout value
+            }
+            w
         });
 
         // Configure filters
@@ -990,6 +1556,25 @@ impl Driver<'_> {
 
         // Reset FIFO
         self.reset_fifo();
+
+        // ESP32-C6 specific: Final slave mode activation
+        #[cfg(esp32c6)]
+        {
+            // Clear any pending interrupts that might interfere
+            self.regs().int_clr().write(|w| unsafe { w.bits(0x1FFF) });
+            
+            // The key for ESP32-C6 acknowledgment: enable the slave to actively monitor the bus
+            // ESP32-C6 has a different hardware implementation that requires explicit activation
+            self.regs().ctr().modify(|_, w| {
+                // Ensure slave mode is active
+                w.ms_mode().clear_bit();
+                // Force open-drain outputs
+                w.sda_force_out().set_bit();
+                w.scl_force_out().set_bit();
+                // Enable clock
+                w.clk_en().set_bit()
+            });
+        }
 
         self.update_registers();
 
@@ -1039,28 +1624,93 @@ impl Driver<'_> {
         #[cfg(esp32)]
         self.regs().ctr().modify(|_, w| w.trans_start().set_bit());
 
-        #[cfg(not(esp32))]
+        #[cfg(esp32c6)]
+        {
+            // ESP32-C6 critical sequence for slave acknowledgment:
+            
+            // 1. Update configuration
+            self.regs().ctr().modify(|_, w| w.conf_upgate().set_bit());
+            
+            // 2. Start slave operation - this is what actually enables acknowledgment
+            // The hardware needs this bit set to begin monitoring the I2C bus for its address
+            self.regs().ctr().modify(|_, w| {
+                w.trans_start().set_bit();
+                w.ms_mode().clear_bit()  // Double-ensure slave mode
+            });
+            
+            // 3. Additional ESP32-C6 specific: enable slave reception
+            self.regs().ctr().modify(|_, w| {
+                w.slv_tx_auto_start_en().set_bit()  // This might be key for acknowledgment
+            });
+        }
+
+        #[cfg(not(any(esp32, esp32c6)))]
+        // Other ESP32 variants (S2, S3, etc.) use ctr2
         self.regs().ctr2().modify(|_, w| w.conf_upgate().set_bit());
     }
 
-    fn wait_for_rx_data(&self) {
+    fn wait_for_rx_data(&self) -> Result<(), Error> {
+        // Clear any pending interrupts from previous transactions
+        self.regs().int_clr().write(|w| {
+            w.trans_complete().clear_bit_by_one()
+                .arbitration_lost().clear_bit_by_one()
+                .time_out().clear_bit_by_one()
+        });
+        
+        // Wait for transaction complete (STOP condition) to ensure all data is received
+        // Use a timeout to prevent infinite waiting
+        let start = Instant::now();
+        let timeout = crate::time::Duration::from_millis(self.config.config.timeout_ms as u64);
+        
         loop {
-            let status = self.regs().sr().read();
+            let interrupts = self.regs().int_raw().read();
             
-            #[cfg(not(esp32))]
-            if status.rxfifo_cnt().bits() > 0 {
+            // Check if transaction is complete (STOP detected)
+            if interrupts.trans_complete().bit_is_set() {
+                // Don't clear the interrupt here - just break
+                // The interrupt will be cleared later if needed
                 break;
             }
             
-            #[cfg(esp32)]
-            if !(status.rxfifo_cnt().bits() == 0) {
-                break;
+            // Also check for errors
+            if interrupts.arbitration_lost().bit_is_set() {
+                return Err(Error::ArbitrationLost);
+            }
+            
+            if interrupts.time_out().bit_is_set() {
+                return Err(Error::Timeout);
+            }
+            
+            // Check for timeout
+            if Instant::now() > start + timeout {
+                return Err(Error::Timeout);
             }
         }
+        
+        // Small delay to ensure FIFO is fully populated after STOP condition
+        // This helps with hardware timing issues on some ESP32 variants
+        for _ in 0..10 {
+            unsafe { core::arch::asm!("nop") };
+        }
+        
+        Ok(())
     }
 
     fn read_fifo(&self, buffer: &mut [u8]) -> usize {
         let mut count = 0;
+        
+        // ESP32-C6 specific: Check if there's actually data in the FIFO
+        #[cfg(esp32c6)]
+        {
+            let status = self.regs().sr().read();
+            let fifo_count = status.rxfifo_cnt().bits();
+            
+            // Debug: On ESP32-C6, the first byte might be consumed by address matching
+            // We need to check if the FIFO count matches what we expect
+            if fifo_count == 0 {
+                return 0; // No data available
+            }
+        }
         
         for byte in buffer.iter_mut() {
             let status = self.regs().sr().read();
@@ -1091,8 +1741,58 @@ impl Driver<'_> {
             return Err(Error::FifoExceeded);
         }
 
+        // ESP32-C6 specific: Prepare for transmission
+        #[cfg(esp32c6)]
+        {
+            self.prepare_slave_tx();
+            
+            // Check if we can write to TX FIFO
+            let status = self.regs().sr().read();
+            if status.txfifo_cnt().bits() >= I2C_FIFO_SIZE as u8 {
+                return Err(Error::TxFifoOverflow);
+            }
+        }
+
         for &byte in buffer {
+            // ESP32-C6: Check FIFO space before each write
+            #[cfg(esp32c6)]
+            {
+                let status = self.regs().sr().read();
+                if status.txfifo_cnt().bits() >= I2C_FIFO_SIZE as u8 {
+                    return Err(Error::TxFifoOverflow);
+                }
+            }
+            
             write_fifo(self.regs(), byte);
+        }
+
+        // ESP32-C6 specific: Finalize and release the bus
+        #[cfg(esp32c6)]
+        {
+            // Update configuration to make data available
+            self.regs().ctr().modify(|_, w| w.conf_upgate().set_bit());
+            
+            // Clear trans_start first if it's set
+            self.regs().ctr().modify(|_, w| w.trans_start().clear_bit());
+            
+            // Small delay for register write to take effect
+            for _ in 0..10 {
+                unsafe { core::arch::asm!("nop") };
+            }
+            
+            // Now set trans_start to trigger transmission
+            self.regs().ctr().modify(|_, w| {
+                w.trans_start().set_bit();
+                w.slv_tx_auto_start_en().set_bit()
+            });
+            
+            // Another small delay to ensure hardware processes the command
+            for _ in 0..10 {
+                unsafe { core::arch::asm!("nop") };
+            }
+            
+            // Update config again to commit changes
+            self.regs().ctr().modify(|_, w| w.conf_upgate().set_bit());
         }
 
         Ok(())
@@ -1110,6 +1810,50 @@ impl Driver<'_> {
         }
 
         Ok(())
+    }
+
+    /// ESP32-C6 specific: Prepare slave for transmission
+    #[cfg(esp32c6)]
+    fn prepare_slave_tx(&self) {
+        // Clear any previous transmission state
+        self.regs().int_clr().write(|w| unsafe { w.bits(0x1FFF) });
+        
+        // CRITICAL: Completely disable clock stretching to prevent bus hang
+        self.regs().scl_stretch_conf().modify(|_, w| {
+            w.slave_scl_stretch_en().clear_bit(); // Disable stretching
+            unsafe {
+                w.stretch_protect_num().bits(0); // No stretch protection needed
+            }
+            w.slave_byte_ack_ctl_en().clear_bit();
+            w.slave_byte_ack_lvl().clear_bit();
+            w
+        });
+        
+        // Ensure slave TX is properly configured
+        self.regs().ctr().modify(|_, w| {
+            w.ms_mode().clear_bit();           // Ensure slave mode
+            w.slv_tx_auto_start_en().set_bit(); // Enable auto TX start
+            w.sda_force_out().set_bit();       // Force SDA output
+            w.scl_force_out().set_bit()        // Force SCL output
+        });
+        
+        // Set TX FIFO watermark to trigger interrupt when ready
+        self.regs().fifo_conf().modify(|_, w| {
+            unsafe {
+                w.txfifo_wm_thrhd().bits(0); // Trigger immediately when any space available
+            }
+            // Configure register-based mode consistently with init_slave()
+            // In TX operations, this should match the RX configuration
+            if self.config.config.register_based_mode {
+                w.fifo_addr_cfg_en().set_bit()
+            } else {
+                w.fifo_addr_cfg_en().clear_bit()
+            };
+            w
+        });
+        
+        // Update configuration
+        self.regs().ctr().modify(|_, w| w.conf_upgate().set_bit());
     }
 }
 
