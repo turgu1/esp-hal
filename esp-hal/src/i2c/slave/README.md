@@ -24,7 +24,7 @@ Note: ESP32-P4 and ESP32-C2 do not have I2C slave support listed in the metadata
 - Basic read/write operations
 - Configurable slave address (7-bit and 10-bit)
 - Configurable timeout for blocking reads
-- Clock stretching support (configurable, disabled by default on ESP32-C6)
+- Clock stretching support (configurable, enabled by default)
 - SDA/SCL signal filtering
 - Interrupt support
 - Register-based mode (ESP32-C6 only)
@@ -37,7 +37,7 @@ Note: ESP32-P4 and ESP32-C2 do not have I2C slave support listed in the metadata
 ### ESP32-C6 Specific Features
 - **Register-Based Mode**: Emulate register-based I2C devices (sensors, etc.)
 - **10-bit Address Support**: Full hardware support for 10-bit addressing
-- **Clock Stretching Disabled**: Prevents bus hangs during TX operations
+- **Clock Stretching**: Enabled by default, can be disabled if needed
 - **Enhanced FIFO Configuration**: Automatic handling of FIFO modes
 
 ## Configuration Options
@@ -45,7 +45,7 @@ Note: ESP32-P4 and ESP32-C2 do not have I2C slave support listed in the metadata
 The driver can be configured with:
 - **Slave Address**: 7-bit (0x00..=0x7F) or 10-bit (0x000..=0x3FF) I2C address (default: 7-bit 0x55)
 - **Timeout**: Blocking read timeout in milliseconds (default: 1000ms)
-- **Clock Stretching**: Enable/disable clock stretching (default: true, except ESP32-C6 where it's disabled)
+- **Clock Stretching**: Enable/disable clock stretching (default: true on all supported variants)
 - **SDA Filter**: Enable/disable and configure threshold (default: enabled, threshold 7)
 - **SCL Filter**: Enable/disable and configure threshold (default: enabled, threshold 7)
 - **Register-Based Mode**: Enable register addressing mode (ESP32-C6 only, default: false)
@@ -99,6 +99,72 @@ let config = Config::default()
 let mut i2c = I2c::new(peripherals.I2C0, config)?
     .with_sda(peripherals.GPIO1)
     .with_scl(peripherals.GPIO2);
+```
+
+### Write-Read Transactions (ESP32-C6 Only)
+
+Handle combined write_read() transactions using **register-based mode** (recommended):
+
+```rust
+#[cfg(esp32c6)]
+{
+    use esp_hal::i2c::slave::{Config, I2c};
+    
+    // Enable register-based mode to handle write_read() automatically
+    let config = Config::default()
+        .with_address(0x55.into())
+        .with_register_based_mode(true)
+        .with_timeout_ms(5000);
+    
+    let mut i2c = I2c::new(peripherals.I2C0, config)?
+        .with_sda(peripherals.GPIO1)
+        .with_scl(peripherals.GPIO2);
+    
+    // Simulate a register-based device
+    let mut registers = [0u8; 256];
+    registers[0x00] = 0x55; // Device ID
+    registers[0x01] = 0xAA; // Register 1 data
+    registers[0x02] = 0xBB; // Register 2 data
+    
+    loop {
+        let mut data_buf = [0u8; 32];
+        
+        // Hardware automatically handles write_read():
+        // - First byte (register address) separated by hardware
+        // - Remaining bytes (if any) go to data_buf
+        match i2c.read(&mut data_buf) {
+            Ok(bytes_read) => {
+                // Get the register address the master requested
+                let reg_addr = i2c.read_register_address();
+                
+                // Prepare response based on register
+                let len = 4.min(256 - reg_addr as usize);
+                let response = &registers[reg_addr as usize..][..len];
+                
+                // Load response for master to read
+                i2c.write(response)?;
+            }
+            Err(e) => {
+                // Handle timeout or other errors
+            }
+        }
+    }
+}
+```
+
+**Alternative (without register-based mode):**
+```rust
+// Use separate transactions - works on all variants
+loop {
+    let mut cmd = [0u8; 32];
+    // Master writes (e.g., register address)
+    if let Ok(bytes) = i2c.read(&mut cmd) {
+        let reg_addr = cmd[0];
+        let response = &registers[reg_addr as usize..][..4];
+        // Master reads in next transaction
+        i2c.write(response)?;
+    }
+}
 ```
 
 ### Register-Based Mode (ESP32-C6 Only)
@@ -393,8 +459,10 @@ The implementation handles chip-specific register differences using conditional 
 Clock stretching allows the slave to hold the SCL line low to slow down the master:
 - Not available on ESP32
 - Configurable on newer chips (S2, S3, C3, C6, H2)
-- **ESP32-C6 Special Note**: Clock stretching is **disabled by default** to prevent bus hangs during TX operations. The hardware can hold the bus indefinitely if TX FIFO is empty, which causes communication failures.
-- **Impact on 32-byte packets**: Without clock stretching, the slave will NACK if the RX FIFO fills completely (32 bytes). Use interrupt-driven reception for packets at or near FIFO capacity.
+- **Enabled by default** on all supported variants (S2, S3, C3, C6, H2)
+- Can be disabled via `Config::default().with_clock_stretch_enable(false)` if needed
+- When enabled, allows slave to hold SCL low when it needs more time (e.g., FIFO full)
+- **Note**: For 32-byte packets, clock stretching helps prevent NACK when FIFO fills
 
 ### Filters
 
@@ -518,15 +586,19 @@ When testing the slave driver, consider:
    - Example: See "Handling Large Packets" section above
    - Without interrupt handling, packets of 32 bytes or more will fail with NACK
 
+
 2. **Combined write_read() Transactions**: 
-   - Transactions with repeated START (no STOP between write and read) are **not supported**
-   - Use separate write and read transactions instead
-   - See `I2C_SLAVE_WRITE_READ_SUPPORT.md` for details and workarounds
+   - ✅ **SUPPORTED on ESP32-C6 via register-based mode**
+   - Enable `register_based_mode` in config for automatic repeated START handling
+   - For other ESP32 variants, use separate write and read transactions
+   - Without register-based mode, use separate transactions (works reliably)
+   - See `I2C_SLAVE_WRITE_READ_SUPPORT.md` for details and examples
 
 3. **ESP32-C6 TX FIFO Requirement**:
    - Data must be preloaded into TX FIFO **before** master initiates read
    - If TX FIFO is empty during master read, communication may fail
    - Call `write()` to prepare response data in advance
+   - `write_read()` method handles this automatically for combined transactions
 
 4. **External Pull-ups Required**:
    - I2C slave devices must NOT enable internal pull-ups
@@ -537,7 +609,7 @@ When testing the slave driver, consider:
 
 Potential improvements for future versions:
 
-1. **Combined write_read() Support**: Handle repeated START transactions properly
+1. **write_read() on Other Variants**: Extend repeated START support to ESP32-S3, H2, etc.
 2. **DMA Support**: Integrate with DMA for larger data transfers
 3. **General Call**: Support I2C general call address (0x00)
 4. **Multi-master**: Handle multi-master scenarios more robustly
@@ -548,6 +620,7 @@ Potential improvements for future versions:
 
 ## Recent Changes (October 2025)
 
+- ✅ Documented write_read() support via register-based mode (ESP32-C6)
 - ✅ Added 10-bit address support for all variants
 - ✅ Added configurable timeout for blocking reads
 - ✅ Added register-based mode for ESP32-C6

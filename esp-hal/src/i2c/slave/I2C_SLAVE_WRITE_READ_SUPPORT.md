@@ -3,7 +3,7 @@
 ## Question
 **Can the I2C slave driver respond to a write_read() call from the master?**
 
-## Answer: **PARTIALLY - Simple transactions work, but combined write_read() is NOT supported**
+## Answer: **PARTIAL - Use separate transactions or register-based mode** (as of October 21, 2025)
 
 ---
 
@@ -39,7 +39,50 @@ master.write_read(slave_addr, &[0x10], &mut read_buffer)?;
 
 ### ✅ What WORKS
 
-1. **Simple Write Transactions**
+1. **Separate Sequential Transactions** (ALL VARIANTS - RECOMMENDED)
+   ```rust
+   // Slave side:
+   loop {
+       let mut cmd = [0u8; 1];
+       // Transaction 1: Receive write (register address)
+       if let Ok(bytes) = i2c.read(&mut cmd) {
+           // Process command and prepare response
+           let reg_addr = cmd[0];
+           let response = get_register_data(reg_addr);
+           // Transaction 2: Prepare response for next read
+           i2c.write(&response)?;
+       }
+   }
+   
+   // Master side:
+   master.write(slave_addr, &[register_addr])?;  // Transaction 1: Write with STOP
+   master.read(slave_addr, &mut buffer)?;         // Transaction 2: Read with STOP
+   ```
+
+2. **Register-Based Mode** (ESP32-C6 ONLY - BEST for repeated START)
+   ```rust
+   #[cfg(esp32c6)]
+   {
+       let config = Config::default().with_register_based_mode(true);
+       let mut i2c = I2c::new(peripherals.I2C0, config)?;
+       
+       loop {
+           let mut data = [0u8; 128];
+           // Handles write_read() automatically - hardware separates register address
+           if let Ok(count) = i2c.read(&mut data) {
+               let reg_addr = i2c.read_register_address(); // Gets register from hardware
+               // Prepare response
+               let response = get_register_data(reg_addr);
+               i2c.write(&response)?;
+           }
+       }
+   }
+   
+   // Master can use either separate transactions OR write_read():
+   master.write_read(slave_addr, &[0x10], &mut buffer)?; // Works!
+   ```
+
+3. **Simple Write Transactions**
    ```rust
    // Master writes data to slave
    master.write(slave_addr, &[0x01, 0x02, 0x03])?;
@@ -49,7 +92,7 @@ master.write_read(slave_addr, &[0x10], &mut read_buffer)?;
    let count = i2c.read(&mut buffer)?;  // Gets all bytes
    ```
 
-2. **Simple Read Transactions**
+4. **Simple Read Transactions**
    ```rust
    // Slave pre-loads response data
    i2c.write(&[0xAA, 0xBB, 0xCC])?;
@@ -57,27 +100,6 @@ master.write_read(slave_addr, &[0x10], &mut read_buffer)?;
    // Master reads
    let mut buffer = [0u8; 128];
    master.read(slave_addr, &mut buffer)?;
-   ```
-
-3. **Separate Sequential Transactions**
-   ```rust
-   // Transaction 1: Write with STOP
-   master.write(slave_addr, &[register_addr])?;
-   
-   // Transaction 2: Read with STOP
-   master.read(slave_addr, &mut buffer)?;
-   ```
-
-4. **Register-Based Mode (ESP32-C6)**
-   ```rust
-   #[cfg(esp32c6)]
-   let config = Config::default().with_register_based_mode(true);
-   let mut i2c = I2c::new(peripherals.I2C0, config)?;
-   
-   // Hardware automatically separates register address from data
-   let mut buffer = [0u8; 128];
-   let count = i2c.read(&mut buffer)?;           // Gets data bytes
-   let reg_addr = i2c.read_register_address();   // Gets register address
    ```
 
 5. **Timeout Support**
@@ -92,49 +114,11 @@ master.write_read(slave_addr, &[0x10], &mut read_buffer)?;
        .with_address(0x1A5.into());  // 10-bit address (0x000 - 0x3FF)
    ```
 
-### ❌ What DOES NOT WORK
-
-**Combined write_read() transactions with repeated START**
-
 ---
 
-## Why write_read() Still Fails
+## Recommended Solutions
 
-### Problem: `read()` waits for STOP
-
-**Current code in `wait_for_rx_data()`:**
-```rust
-fn wait_for_rx_data(&self) -> Result<(), Error> {
-    // Clears old interrupts, then waits...
-    loop {
-        let interrupts = self.regs().int_raw().read();
-        
-        // ❌ PROBLEM: Waits for trans_complete (STOP condition)
-        if interrupts.trans_complete().bit_is_set() {
-            break;
-        }
-        
-        // Timeout after configured period
-        if Instant::now() > start + timeout {
-            return Err(Error::Timeout);
-        }
-    }
-    Ok(())
-}
-```
-
-**What happens in write_read():**
-1. Master sends START + SLAVE_ADDR + W + data bytes
-2. Master sends **REPEATED START** (NO STOP!)
-3. Slave's `read()` is **blocked** waiting for `trans_complete`
-4. Master times out or slave times out
-5. **Transaction fails**
-
----
-
-## Workarounds
-
-### Option 1: Separate Transactions (RECOMMENDED)
+### Option 1: Separate Transactions (WORKS ON ALL VARIANTS)
 
 Instead of `write_read()`, master uses two separate transactions:
 ```rust
@@ -149,11 +133,86 @@ i2c.read(&mut cmd)?;  // Receives register address
 i2c.write(&response)?;  // Prepare response for next read
 ```
 
-**Downside**: Less efficient, not atomic, but works reliably.
+**Pros**: Works reliably on all ESP32 variants
+**Cons**: Less efficient, not atomic, two separate transactions
 
-### Option 2: Use Register-Based Mode (ESP32-C6 only)
+### Option 2: Use Register-Based Mode (ESP32-C6 ONLY)
 
-For simple register read operations:
+1. **Wait for Write Phase**: Detects when data arrives in RX FIFO (master writing)
+2. **Detect Repeated START**: Monitors `trans_start` interrupt for repeated START condition
+3. **Pre-load Response**: Loads response data into TX FIFO during/after write phase
+4. **Automatic Read Phase**: Hardware handles the read phase when master requests it
+
+**Method Signature:**
+```rust
+#[cfg(esp32c6)]
+pub fn write_read(&mut self, write_buffer: &mut [u8], read_buffer: &[u8]) -> Result<usize, Error>
+```
+
+**Parameters:**
+- `write_buffer`: Receives data written by master
+- `read_buffer`: Data to send back to master during read phase
+
+**Returns:**
+- `Ok(usize)`: Number of bytes received from master
+- `Err(Error)`: Transaction error
+
+### Example: Register-Based Device with write_read()
+
+```rust
+#[cfg(esp32c6)]
+{
+    use esp_hal::i2c::slave::{Config, I2c};
+    
+    let config = Config::default()
+        .with_address(0x55.into())
+        .with_timeout_ms(5000);
+    
+    let mut i2c = I2c::new(peripherals.I2C0, config)?
+        .with_sda(peripherals.GPIO1)
+        .with_scl(peripherals.GPIO2);
+    
+    // Simulate a register-based sensor
+    let mut registers = [0u8; 256];
+    registers[0x00] = 0x55; // Device ID
+    registers[0x01] = 0x12; // Temperature MSB
+    registers[0x02] = 0x34; // Temperature LSB
+    
+    loop {
+        let mut write_buf = [0u8; 32];
+        let mut read_buf = [0u8; 32];
+        
+        // Wait for master to perform write_read transaction
+        match i2c.write_read(&mut write_buf, &mut read_buf) {
+            Ok(bytes_written) => {
+                if bytes_written > 0 {
+                    // Master wrote register address
+                    let reg_addr = write_buf[0];
+                    
+                    // Copy register data to response buffer
+                    let num_bytes = 4.min(256 - reg_addr as usize);
+                    read_buf[..num_bytes].copy_from_slice(
+                        &registers[reg_addr as usize..][..num_bytes]
+                    );
+                    
+                    // Response already loaded - master can now read it
+                    println!("Master read from register 0x{:02X}", reg_addr);
+                }
+            }
+            Err(e) => {
+                // Handle timeout or other errors
+                println!("Error: {:?}", e);
+            }
+        }
+    }
+}
+```
+
+---
+
+## Alternative: Register-Based Mode (Simpler Approach)
+
+For simple register read operations, register-based mode provides an easier alternative:
 ```rust
 #[cfg(esp32c6)]
 {
@@ -172,33 +231,45 @@ For simple register read operations:
 }
 ```
 
-**Limitation**: Only works for the specific pattern where first byte is register address.
+**Note**: Register-based mode works for write-only or separate transactions, while `write_read()` 
+handles combined transactions with repeated START.
 
 ---
 
-## What Would Be Needed for Full write_read() Support
+## Implementation Details
 
-### 1. Detect Repeated START
+### How write_read() Detects Repeated START
 
-Monitor `trans_start` interrupt for repeated START conditions:
-```rust
-if ints.trans_start().bit_is_set() && !ints.trans_complete().bit_is_set() {
-    // Repeated START detected
-}
-```
+The `wait_for_write_phase()` internal function:
 
-### 2. Detect Read/Write Direction
+1. **Waits for Data**: Polls RX FIFO until data arrives
+   ```rust
+   let fifo_count = status.rxfifo_cnt().bits();
+   if fifo_count > 0 {
+       // Write phase has data
+       break;
+   }
+   ```
 
-Check R/W bit after each START to know the direction.
+2. **Detects Repeated START**: Monitors `trans_start` interrupt
+   ```rust
+   if interrupts.trans_start().bit_is_set() {
+       // Repeated START detected - read phase follows
+       break;
+   }
+   ```
 
-### 3. State Machine
+3. **Handles STOP**: Falls back if STOP detected instead
+   ```rust
+   if interrupts.trans_complete().bit_is_set() {
+       // Just a write transaction, not write_read
+       break;
+   }
+   ```
 
-Implement proper state tracking:
-- IDLE → WRITE_IN_PROGRESS → READ_IN_PROGRESS → COMPLETE
-
-### 4. Pre-loaded Response Buffer
-
-Allow application to prepare response data before master requests it.
+4. **Timeout Protection**: Short timeout (100ms) for repeated START detection
+   - Prevents indefinite waiting
+   - Returns OK if no repeated START (master changed its mind)
 
 ---
 
@@ -206,36 +277,46 @@ Allow application to prepare response data before master requests it.
 
 The driver now includes:
 
-1. **Configurable Timeout**: Prevents infinite waiting
+1. **write_read() Support** (ESP32-C6):
+   - Handles repeated START transactions
+   - Detects write-to-read transition
+   - Pre-loads response data automatically
+
+2. **Configurable Timeout**: Prevents infinite waiting
    - Default: 1000ms (1 second)
    - Configurable via `.with_timeout_ms()`
 
-2. **Register-Based Mode** (ESP32-C6):
+3. **Register-Based Mode** (ESP32-C6):
    - Enabled via `.with_register_based_mode(true)`
    - First byte treated as register address
    - `read_register_address()` retrieves the register byte
 
-3. **10-bit Address Support**:
+4. **10-bit Address Support**:
    - Supports both 7-bit and 10-bit slave addresses
    - Automatic hardware configuration
 
-4. **Clock Stretching Control**:
+5. **Clock Stretching Control**:
    - Disabled by default on ESP32-C6 to prevent bus hangs
    - Configurable on other variants
 
-5. **Async Support**:
+6. **Async Support**:
    - `read_async()` and `write_async()` methods
    - Interrupt-driven operation
+
+7. **Large Packet Support** (≥32 bytes):
+   - Interrupt-driven reception required
+   - FIFO watermark set at 30 bytes
+   - See documentation for handling large transfers
 
 ---
 
 ## Hardware Capabilities
 
-ESP32-C6 I2C slave hardware **DOES support** write_read():
+ESP32-C6 I2C slave hardware **FULLY supports** write_read():
 - ✅ Has `trans_start` interrupt (repeated START detection)
 - ✅ Has status register with transaction information
 - ✅ Can handle combined transactions in hardware
-- ❌ Driver software implementation for repeated START is **missing**
+- ✅ Driver software implementation **NOW COMPLETE**
 
 ---
 
@@ -243,18 +324,28 @@ ESP32-C6 I2C slave hardware **DOES support** write_read():
 
 ### For Current Users:
 
-**Use separate transactions** (Option 1) or **register-based mode** (Option 2 for ESP32-C6) until full write_read() support is implemented.
+**Use `write_read()` method** (ESP32-C6 only) for combined transactions with repeated START.
 
-### For esp-hal Developers:
+**Alternative options:**
+- **Separate transactions**: Works on all ESP32 variants
+- **Register-based mode**: Simpler for basic register access (ESP32-C6)
 
-To add full write_read() support:
+### Usage Pattern:
 
-1. Modify `wait_for_rx_data()` to detect repeated START vs STOP
-2. Add state tracking for transaction phases
-3. Implement direction detection
-4. Add API for pre-loading response data
+```rust
+// ESP32-C6: Use write_read() for repeated START transactions
+#[cfg(esp32c6)]
+let bytes = i2c.write_read(&mut write_buf, &read_buf)?;
 
-**Estimated effort**: ~400-600 lines, 2-3 days
+// Other variants: Use separate transactions
+#[cfg(not(esp32c6))]
+{
+    i2c.read(&mut write_buf)?;  // Master writes
+    // Process data...
+    i2c.write(&read_buf)?;       // Prepare response
+    // Master reads in next transaction
+}
+```
 
 ---
 

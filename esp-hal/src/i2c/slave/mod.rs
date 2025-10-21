@@ -1512,12 +1512,11 @@ impl Driver<'_> {
         // Configure clock stretching
         #[cfg(esp32c6)]
         self.regs().scl_stretch_conf().modify(|_, w| {
-            // CRITICAL for ESP32-C6: Disable clock stretching entirely to prevent bus hangs
-            // The ESP32-C6 slave has issues with clock stretching during TX operations
-            // Without stretching, the slave must have data ready in TX FIFO before master reads
-            w.slave_scl_stretch_en().clear_bit(); // ALWAYS disable for ESP32-C6
+            // Enable clock stretching for ESP32-C6
+            // This allows the slave to hold SCL low to slow down the master when needed
+            w.slave_scl_stretch_en().bit(config.clock_stretch_enable);
             unsafe { 
-                w.stretch_protect_num().bits(0); // No stretching allowed
+                w.stretch_protect_num().bits(1000); // Set reasonable stretch timeout
             }
             // Disable byte ACK control features that can cause clock holding
             w.slave_byte_ack_ctl_en().clear_bit();
@@ -1818,11 +1817,11 @@ impl Driver<'_> {
         // Clear any previous transmission state
         self.regs().int_clr().write(|w| unsafe { w.bits(0x1FFF) });
         
-        // CRITICAL: Completely disable clock stretching to prevent bus hang
+        // Configure clock stretching per config setting
         self.regs().scl_stretch_conf().modify(|_, w| {
-            w.slave_scl_stretch_en().clear_bit(); // Disable stretching
+            w.slave_scl_stretch_en().bit(self.config.config.clock_stretch_enable);
             unsafe {
-                w.stretch_protect_num().bits(0); // No stretch protection needed
+                w.stretch_protect_num().bits(if self.config.config.clock_stretch_enable { 1000 } else { 0 });
             }
             w.slave_byte_ack_ctl_en().clear_bit();
             w.slave_byte_ack_lvl().clear_bit();
