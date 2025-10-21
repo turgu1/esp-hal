@@ -1309,6 +1309,7 @@ impl Chip {
                     "timergroup_default_wdt_clock_source=\"1\"",
                     "timergroup_default_wdt_clock_source_is_set",
                     "uart_ram_size=\"128\"",
+                    "uart_peripheral_controls_mem_clk",
                     "lp_uart_ram_size=\"32\"",
                     "wifi_has_wifi6",
                     "bt_controller=\"npl\"",
@@ -1541,6 +1542,7 @@ impl Chip {
                     "cargo:rustc-cfg=timergroup_default_wdt_clock_source=\"1\"",
                     "cargo:rustc-cfg=timergroup_default_wdt_clock_source_is_set",
                     "cargo:rustc-cfg=uart_ram_size=\"128\"",
+                    "cargo:rustc-cfg=uart_peripheral_controls_mem_clk",
                     "cargo:rustc-cfg=lp_uart_ram_size=\"32\"",
                     "cargo:rustc-cfg=wifi_has_wifi6",
                     "cargo:rustc-cfg=bt_controller=\"npl\"",
@@ -1752,6 +1754,7 @@ impl Chip {
                     "timergroup_default_wdt_clock_source=\"2\"",
                     "timergroup_default_wdt_clock_source_is_set",
                     "uart_ram_size=\"128\"",
+                    "uart_peripheral_controls_mem_clk",
                     "bt_controller=\"npl\"",
                     "has_dram_region",
                 ],
@@ -1956,6 +1959,7 @@ impl Chip {
                     "cargo:rustc-cfg=timergroup_default_wdt_clock_source=\"2\"",
                     "cargo:rustc-cfg=timergroup_default_wdt_clock_source_is_set",
                     "cargo:rustc-cfg=uart_ram_size=\"128\"",
+                    "cargo:rustc-cfg=uart_peripheral_controls_mem_clk",
                     "cargo:rustc-cfg=bt_controller=\"npl\"",
                     "cargo:rustc-cfg=has_dram_region",
                 ],
@@ -3071,6 +3075,7 @@ pub fn emit_check_cfg_directives() {
     println!("cargo:rustc-check-cfg=cfg(i2c_slave_has_reliable_fsm_reset)");
     println!("cargo:rustc-check-cfg=cfg(rmt_has_tx_loop_auto_stop)");
     println!("cargo:rustc-check-cfg=cfg(rmt_supports_pll80mhz_clock)");
+    println!("cargo:rustc-check-cfg=cfg(uart_peripheral_controls_mem_clk)");
     println!("cargo:rustc-check-cfg=cfg(wifi_has_wifi6)");
     println!("cargo:rustc-check-cfg=cfg(esp32h2)");
     println!("cargo:rustc-check-cfg=cfg(esp32s2)");
