@@ -354,9 +354,9 @@ let events = i2c.interrupts();
 i2c.clear_interrupts(events);
 ```
 
-### Handling Large Packets (> 32 bytes)
+### Handling Large Packets (> 31 bytes)
 
-Due to the 32-byte FIFO limitation, packets larger than 32 bytes require interrupt-driven reception:
+Due to the 31-byte practical FIFO read limitation, packets larger than 31 bytes require interrupt-driven reception:
 
 ```rust
 use esp_hal::i2c::slave::{Config, I2c, Event};
@@ -376,7 +376,7 @@ loop {
     let events = i2c.interrupts();
     
     if events.contains(Event::RxFifoFull) {
-        // FIFO has data (up to 32 bytes) - read it
+        // FIFO has data (up to 31 bytes) - read it
         match i2c.read(&mut large_buffer[offset..]) {
             Ok(chunk_size) => {
                 offset += chunk_size;
@@ -407,7 +407,7 @@ loop {
 - RxFifoFull triggers when FIFO reaches threshold (default: 1 byte, configurable)
 - Read data promptly to avoid FIFO overflow
 - TransComplete indicates the master has finished the transaction
-- Without interrupt handling, only first 32 bytes will be received
+- Without interrupt handling, only first 31 bytes will be received
 
 ## Architecture
 
@@ -531,7 +531,8 @@ The driver provides detailed error types:
 
 ### FIFO Management
 
-- FIFO size: 32 bytes (property-based, may vary by chip)
+- FIFO size: 32 bytes total (hardware capacity)
+- **Practical read limit: 31 bytes** (due to implementation constraints)
 - Automatic FIFO reset on initialization and errors
 - Read operations poll FIFO status
 - Write operations check for FIFO space
@@ -578,7 +579,7 @@ When testing the slave driver, consider:
 1. **Basic Communication**: Test read and write with a master device
 2. **Address Matching**: Verify slave responds only to its configured address
    - Test both 7-bit and 10-bit addresses
-3. **FIFO Limits**: Test with data sizes at and beyond FIFO capacity (32 bytes)
+3. **FIFO Limits**: Test with data sizes at and beyond FIFO read capacity (31 bytes)
 4. **Clock Stretching**: Test with and without clock stretching enabled
    - On ESP32-C6, verify it stays disabled to prevent bus hangs
 5. **Filtering**: Test in noisy environments with different filter settings
@@ -594,15 +595,15 @@ When testing the slave driver, consider:
 
 ## Known Limitations
 
-1. **FIFO Size Limit (32 bytes)**:
-   - Hardware FIFO is limited to 32 bytes
-   - Single `read()` call can only retrieve up to 32 bytes from FIFO
-   - Single `write()` call can only load up to 32 bytes into TX FIFO
-   - **For packets ≥ 32 bytes**: Use interrupt-driven reception with `RxFifoFull` event
-   - **Critical**: In blocking mode without interrupts, a 32-byte packet will be NACKed because the FIFO fills completely before software can read it
+1. **FIFO Size Limit (31 bytes for reads)**:
+   - Hardware FIFO is 32 bytes total, but practical read limit is 31 bytes
+   - Single `read()` call can only retrieve up to 31 bytes from FIFO
+   - Single `write()` call can load up to 32 bytes into TX FIFO
+   - **For packets ≥ 31 bytes**: Use interrupt-driven reception with `RxFifoFull` event
+   - **Critical**: In blocking mode without interrupts, a 31-byte packet will be NACKed because the FIFO fills before software can read it
    - **Solution**: Enable `Event::RxFifoFull` interrupt to read data as FIFO fills (threshold set at 30 bytes)
    - Example: See "Handling Large Packets" section above
-   - Without interrupt handling, packets of 32 bytes or more will fail with NACK
+   - Without interrupt handling, packets of 31 bytes or more will fail with NACK
 
 
 2. **Combined write_read() Transactions**: 

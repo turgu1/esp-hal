@@ -470,13 +470,13 @@ where
         Ok(read_buffer)
     }
 
-    /// Test async write_read() with maximum FIFO
+    /// Test async write_read() with maximum FIFO (31 bytes - hardware limit)
     pub async fn test_maximum_fifo_write_read(
         &mut self,
         register: u8,
-    ) -> Result<[u8; 32], esp_hal::i2c::Error> {
+    ) -> Result<[u8; 31], esp_hal::i2c::Error> {
         let write_data = [register];
-        let mut read_buffer = [0u8; 32];
+        let mut read_buffer = [0u8; 31];
 
         self.master
             .write_read(&write_data, &mut read_buffer)

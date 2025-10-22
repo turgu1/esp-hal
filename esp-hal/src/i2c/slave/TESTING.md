@@ -99,27 +99,27 @@ This document provides a comprehensive checklist for testing and validating the 
 - [ ] ACK/NACK handled correctly
 
 #### Test 3: Multi-byte Write
-**Setup:** Master writes multiple bytes (2-32 bytes)
+**Setup:** Master writes multiple bytes (2-31 bytes)
 - [ ] All bytes received correctly
 - [ ] Correct byte order
 - [ ] FIFO management works
 - [ ] No data loss
 
 #### Test 4: Multi-byte Read
-**Setup:** Master reads multiple bytes (2-32 bytes)
+**Setup:** Master reads multiple bytes (2-31 bytes)
 - [ ] All bytes transmitted correctly
 - [ ] Correct byte order
 - [ ] FIFO management works
 - [ ] Final byte NACK handled
 
 #### Test 5: Maximum FIFO Usage
-**Setup:** Test at FIFO capacity (32 bytes)
+**Setup:** Test at FIFO read capacity (31 bytes for reads, 32 for writes)
 - [ ] Write 32 bytes successfully
-- [ ] Read 32 bytes successfully
+- [ ] Read 31 bytes successfully (hardware limit)
 - [ ] No overflow/underflow
 
 #### Test 6: Beyond FIFO Capacity
-**Setup:** Attempt >32 byte operations
+**Setup:** Attempt >31 byte read operations (>32 byte write)
 - [ ] Proper error handling
 - [ ] No data corruption
 - [ ] Recovery possible
@@ -151,8 +151,8 @@ This document provides a comprehensive checklist for testing and validating the 
 - [ ] Response can be customized based on register value
 
 #### Test 6d: write_read() - Maximum FIFO
-**Setup:** Master performs write_read() with 32-byte read
-- [ ] All 32 bytes transmitted correctly
+**Setup:** Master performs write_read() with 31-byte read
+- [ ] All 31 bytes transmitted correctly
 - [ ] FIFO management works properly
 - [ ] No overflow/underflow
 

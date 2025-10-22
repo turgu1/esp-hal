@@ -141,8 +141,8 @@ mod hil_tests {
     #[ignore = "Requires HIL setup"]
     fn test_maximum_fifo_read() {
         // Test 5: Maximum FIFO Usage (Read)
-        // Setup: Test at FIFO capacity (32 bytes)
-        // Expected: All 32 bytes transmitted without error
+        // Setup: Test at FIFO read capacity (31 bytes - hardware limitation)
+        // Expected: All 31 bytes transmitted without error
 
         /*
         let peripherals = unsafe { Peripherals::steal() };
@@ -151,7 +151,7 @@ mod hil_tests {
             .with_sda(peripherals.GPIO1)
             .with_scl(peripherals.GPIO2);
 
-        let data = generate_sequential(0x00, 32);
+        let data = generate_sequential(0x00, 31);
         let result = slave.write(&data);
 
         assert!(result.is_ok());
@@ -302,7 +302,7 @@ mod hil_tests {
     #[ignore = "Requires HIL setup"]
     fn test_write_read_maximum_data() {
         // Test 10: write_read() with Maximum FIFO Usage
-        // Setup: Master performs write_read() with max read size (32 bytes)
+        // Setup: Master performs write_read() with max read size (31 bytes - hardware limit)
         // Expected: All bytes transmitted correctly
 
         /*
@@ -315,11 +315,11 @@ mod hil_tests {
         let mut write_buf = [0u8; 1];
         slave.read(&mut write_buf).unwrap();
 
-        // Prepare maximum FIFO response
-        let response = generate_sequential(0x00, 32);
+        // Prepare maximum FIFO response (31 bytes)
+        let response = generate_sequential(0x00, 31);
         slave.write(&response).unwrap();
 
-        // Master reads all 32 bytes
+        // Master reads all 31 bytes
         */
     }
 

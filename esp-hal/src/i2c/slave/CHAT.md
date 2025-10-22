@@ -1,6 +1,6 @@
-# I2C Slave Driver Development - First steps Chat History
+# I2C Slave Driver Development - First steps Chat History with Claude Sonnet 4.5.
 
-**Date:** October 9, 2025  
+**Date:** October 22, 2025  
 **Project:** ESP32 I2C Slave Driver for esp-hal  
 **Branch:** i2c-slave-driver
 
@@ -8,7 +8,7 @@
 
 ## Overview
 
-This document captures the first part of the development process of the ESP32 I2C slave driver, from initial request through first draft implementation including comprehensive testing infrastructure and master support for Hardware-in-Loop (HIL) testing. As of October 21st, many other step were required to complete a first working version. Claude Sonnet 4.5 was used in support of this effort.
+This document captures the first part of the development process of the ESP32 I2C slave driver, from initial request through first draft implementation including comprehensive testing infrastructure and master support for Hardware-in-Loop (HIL) testing. As of October 22nd, many other step were required to complete a first working version. Claude Sonnet 4.5 was used in support of this effort.
 
 ---
 
