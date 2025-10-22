@@ -13,12 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `work_queue` is no longer public (#4357)
+- UART memory is now powered down when the driver is no longer in use. (#4354)
 
 ### Fixed
 
 
 ### Removed
 
+- The `WatchdogConfig` enum and watchdog timer configuration from `esp_hal::init` (#4377)
 
 ## [v1.0.0-rc.1] - 2025-10-13
 
