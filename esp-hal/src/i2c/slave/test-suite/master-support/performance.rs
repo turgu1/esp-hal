@@ -2,10 +2,10 @@
 //!
 //! I2C master implementations for measuring slave performance.
 
-use super::common::{TestMaster, TestMasterConfig, patterns, timing, assertions};
+use super::common::{TestMaster, TestMasterConfig, assertions, patterns, timing};
 use esp_hal::{
-    peripheral::Peripheral,
     gpio::{InputPin, OutputPin},
+    peripheral::Peripheral,
 };
 
 /// Master for speed testing at different frequencies
@@ -54,14 +54,17 @@ where
     }
 
     /// Test communication reliability at current speed
-    pub fn test_reliability(&mut self, iterations: usize) -> Result<SpeedTestResults, esp_hal::i2c::Error> {
+    pub fn test_reliability(
+        &mut self,
+        iterations: usize,
+    ) -> Result<SpeedTestResults, esp_hal::i2c::Error> {
         let mut results = SpeedTestResults::new();
         let data_size = 32;
         let mut data = vec![0u8; data_size];
-        
+
         for i in 0..iterations {
             patterns::sequential(&mut data, i as u8);
-            
+
             let timer = timing::Timer::new();
             match self.master.write(&data) {
                 Ok(_) => {
@@ -75,27 +78,33 @@ where
                 }
             }
         }
-        
+
         Ok(results)
     }
 
     /// Measure transaction time
-    pub fn measure_transaction_time(&mut self, data_size: usize) -> Result<u64, esp_hal::i2c::Error> {
+    pub fn measure_transaction_time(
+        &mut self,
+        data_size: usize,
+    ) -> Result<u64, esp_hal::i2c::Error> {
         let mut data = vec![0u8; data_size];
         patterns::sequential(&mut data, 0);
-        
+
         let timer = timing::Timer::new();
         self.master.write(&data)?;
         Ok(timer.elapsed_us())
     }
 
     /// Test maximum sustainable rate
-    pub fn test_maximum_rate(&mut self, duration_ms: u64) -> Result<RateTestResults, esp_hal::i2c::Error> {
+    pub fn test_maximum_rate(
+        &mut self,
+        duration_ms: u64,
+    ) -> Result<RateTestResults, esp_hal::i2c::Error> {
         let mut results = RateTestResults::new();
         let data = [0xAAu8; 32];
-        
+
         let start_timer = timing::Timer::new();
-        
+
         while start_timer.elapsed_ms() < duration_ms {
             let timer = timing::Timer::new();
             match self.master.write(&data) {
@@ -109,7 +118,7 @@ where
                 }
             }
         }
-        
+
         results.calculate_rates();
         Ok(results)
     }
@@ -197,94 +206,112 @@ where
     }
 
     /// Test single-byte throughput
-    pub fn test_single_byte_throughput(&mut self, iterations: usize) -> Result<ThroughputResults, esp_hal::i2c::Error> {
+    pub fn test_single_byte_throughput(
+        &mut self,
+        iterations: usize,
+    ) -> Result<ThroughputResults, esp_hal::i2c::Error> {
         let mut results = ThroughputResults::new();
         let data = [0xAAu8];
-        
+
         let timer = timing::Timer::new();
-        
+
         for _ in 0..iterations {
             self.master.write(&data)?;
             results.bytes_transferred += 1;
         }
-        
+
         results.duration_us = timer.elapsed_us();
         results.calculate();
         Ok(results)
     }
 
     /// Test bulk transfer throughput
-    pub fn test_bulk_throughput(&mut self, chunk_size: usize, iterations: usize) -> Result<ThroughputResults, esp_hal::i2c::Error> {
+    pub fn test_bulk_throughput(
+        &mut self,
+        chunk_size: usize,
+        iterations: usize,
+    ) -> Result<ThroughputResults, esp_hal::i2c::Error> {
         let mut results = ThroughputResults::new();
         let mut data = vec![0u8; chunk_size];
         patterns::sequential(&mut data, 0);
-        
+
         let timer = timing::Timer::new();
-        
+
         for i in 0..iterations {
             patterns::sequential(&mut data, i as u8);
             self.master.write(&data)?;
             results.bytes_transferred += chunk_size;
         }
-        
+
         results.duration_us = timer.elapsed_us();
         results.calculate();
         Ok(results)
     }
 
     /// Test optimal FIFO size throughput
-    pub fn test_fifo_optimal(&mut self, iterations: usize) -> Result<ThroughputResults, esp_hal::i2c::Error> {
+    pub fn test_fifo_optimal(
+        &mut self,
+        iterations: usize,
+    ) -> Result<ThroughputResults, esp_hal::i2c::Error> {
         let mut results = ThroughputResults::new();
         let mut data = [0u8; 32]; // FIFO size
-        
+
         let timer = timing::Timer::new();
-        
+
         for i in 0..iterations {
             patterns::sequential(&mut data, i as u8);
             self.master.write(&data)?;
             results.bytes_transferred += 32;
         }
-        
+
         results.duration_us = timer.elapsed_us();
         results.calculate();
         Ok(results)
     }
 
     /// Test sustained transfer rate
-    pub fn test_sustained_rate(&mut self, duration_ms: u64) -> Result<ThroughputResults, esp_hal::i2c::Error> {
+    pub fn test_sustained_rate(
+        &mut self,
+        duration_ms: u64,
+    ) -> Result<ThroughputResults, esp_hal::i2c::Error> {
         let mut results = ThroughputResults::new();
         let data = [0xFFu8; 32];
-        
+
         let start_timer = timing::Timer::new();
-        
+
         while start_timer.elapsed_ms() < duration_ms {
             self.master.write(&data)?;
             results.bytes_transferred += 32;
         }
-        
+
         results.duration_us = start_timer.elapsed_us();
         results.calculate();
         Ok(results)
     }
 
     /// Test various chunk sizes for efficiency
-    pub fn test_chunk_efficiency(&mut self) -> Result<Vec<(usize, ThroughputResults)>, esp_hal::i2c::Error> {
+    pub fn test_chunk_efficiency(
+        &mut self,
+    ) -> Result<Vec<(usize, ThroughputResults)>, esp_hal::i2c::Error> {
         let chunk_sizes = [1, 2, 4, 8, 16, 32, 64, 128];
         let mut results = Vec::new();
-        
+
         for &size in &chunk_sizes {
             let effective_size = size.min(32); // Limit to FIFO
             let result = self.test_bulk_throughput(effective_size, 100)?;
             results.push((size, result));
         }
-        
+
         Ok(results)
     }
 
     /// Compare read vs write throughput
-    pub fn test_read_write_comparison(&mut self, iterations: usize) -> Result<(ThroughputResults, ThroughputResults), esp_hal::i2c::Error> {
+    pub fn test_read_write_comparison(
+        &mut self,
+        iterations: usize,
+    ) -> Result<(ThroughputResults, ThroughputResults), esp_hal::i2c::Error> {
         let data = [0xAAu8; 32];
-        
+
         // Test writes
         let mut write_results = ThroughputResults::new();
         let write_timer = timing::Timer::new();
@@ -294,7 +321,7 @@ where
         }
         write_results.duration_us = write_timer.elapsed_us();
         write_results.calculate();
-        
+
         // Test reads
         let mut read_results = ThroughputResults::new();
         let read_timer = timing::Timer::new();
@@ -305,7 +332,7 @@ where
         }
         read_results.duration_us = read_timer.elapsed_us();
         read_results.calculate();
-        
+
         Ok((write_results, read_results))
     }
 }
@@ -373,10 +400,10 @@ impl RateTestResults {
 
     pub fn calculate_rates(&mut self) {
         if self.successful_transactions > 0 {
-            self.average_time_per_transaction_us = 
+            self.average_time_per_transaction_us =
                 self.total_time_us / self.successful_transactions as u64;
         }
-        
+
         if self.total_time_us > 0 {
             let duration_sec = self.total_time_us as f64 / 1_000_000.0;
             self.bytes_per_second = (self.total_bytes as f64 / duration_sec) as u32;
@@ -403,7 +430,7 @@ mod tests {
         results.record_success(1000);
         results.record_success(2000);
         results.record_success(1500);
-        
+
         assert_eq!(results.successes, 3);
         assert_eq!(results.average_time_us(), 1500);
         assert_eq!(results.min_time_us, 1000);
@@ -416,7 +443,7 @@ mod tests {
         results.bytes_transferred = 1000;
         results.duration_us = 1_000_000; // 1 second
         results.calculate();
-        
+
         assert_eq!(results.bytes_per_second, 1000);
         assert_eq!(results.bits_per_second, 8000);
     }
@@ -425,7 +452,7 @@ mod tests {
     fn test_efficiency_calculation() {
         let mut results = ThroughputResults::new();
         results.bits_per_second = 80_000;
-        
+
         let efficiency = results.efficiency_percent(100_000);
         assert!((efficiency - 80.0).abs() < 0.1);
     }

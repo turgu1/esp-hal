@@ -124,6 +124,59 @@ This document provides a comprehensive checklist for testing and validating the 
 - [ ] No data corruption
 - [ ] Recovery possible
 
+### Write-Read (Repeated START) Tests
+
+> **Note:** write_read() functionality is FULLY SUPPORTED on ESP32-C6 and other modern chips.
+> See I2C_SLAVE_WRITE_READ_SUPPORT.md for detailed implementation information.
+
+#### Test 6a: write_read() - Single Byte
+**Setup:** Master performs write_read([0x10], 1 byte read) with repeated START
+- [ ] Slave receives register address (0x10) in write phase
+- [ ] Slave responds with data byte in read phase
+- [ ] No STOP condition between write and read phases
+- [ ] Transaction completes successfully
+
+#### Test 6b: write_read() - Multi-byte Read
+**Setup:** Master performs write_read([0x20], 4 byte read)
+- [ ] Slave receives register address in write phase
+- [ ] Slave responds with 4 bytes in read phase
+- [ ] All bytes transmitted correctly
+- [ ] Repeated START handled properly
+
+#### Test 6c: write_read() - Register-Based Mode (ESP32-C6)
+**Setup:** Enable register_based_mode config, master performs write_read()
+- [ ] Hardware automatically separates register address
+- [ ] `read_register_address()` returns correct register
+- [ ] Data buffer contains only data bytes (not register address)
+- [ ] Response can be customized based on register value
+
+#### Test 6d: write_read() - Maximum FIFO
+**Setup:** Master performs write_read() with 32-byte read
+- [ ] All 32 bytes transmitted correctly
+- [ ] FIFO management works properly
+- [ ] No overflow/underflow
+
+#### Test 6e: write_read() - Normal Mode (No Register-Based Mode)
+**Setup:** Use default config (register_based_mode = false), master performs write_read()
+- [ ] Transaction works correctly in normal mode
+- [ ] Slave manually handles register address extraction
+- [ ] Repeated START handled by hardware automatically
+- [ ] Confirms register-based mode is optional, not required
+
+#### Test 6f: write_read() vs Separate Transactions
+**Setup:** Compare atomic write_read() vs separate write/read transactions
+- [ ] write_read() is atomic (no other master can intervene)
+- [ ] Separate transactions have STOP between them
+- [ ] Both methods produce correct results
+- [ ] write_read() timing is tighter
+
+#### Test 6g: write_read() - ESP32 Master Compatibility
+**Setup:** Test with ESP32 (original) as master
+- [ ] Disable clock stretching (compatibility requirement)
+- [ ] Ensure quick slave response (<10us)
+- [ ] Monitor for bus hangs (ESP32 has poor clock stretch support)
+- [ ] See ESP32_MASTER_COMPATIBILITY.md for known issues
+
 ### Address Testing
 
 #### Test 7: Correct Address Match

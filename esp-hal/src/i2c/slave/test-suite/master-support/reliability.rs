@@ -4,8 +4,8 @@
 
 use super::common::{TestMaster, TestMasterConfig, patterns, timing};
 use esp_hal::{
-    peripheral::Peripheral,
     gpio::{InputPin, OutputPin},
+    peripheral::Peripheral,
 };
 
 /// Master for stress testing
@@ -42,10 +42,10 @@ where
     ) -> Result<StressTestStats, esp_hal::i2c::Error> {
         let mut data = vec![0u8; chunk_size];
         let start_timer = timing::Timer::new();
-        
+
         while start_timer.elapsed_ms() < duration_ms {
             patterns::sequential(&mut data, self.stats.iterations as u8);
-            
+
             match self.master.write(&data) {
                 Ok(_) => self.stats.record_success(),
                 Err(e) => {
@@ -56,10 +56,10 @@ where
                     }
                 }
             }
-            
+
             self.stats.iterations += 1;
         }
-        
+
         self.stats.duration_ms = start_timer.elapsed_ms();
         Ok(self.stats.clone())
     }
@@ -71,7 +71,7 @@ where
         transactions_per_burst: usize,
     ) -> Result<StressTestStats, esp_hal::i2c::Error> {
         let data = [0xAAu8; 4];
-        
+
         for burst_num in 0..bursts {
             // Rapid burst of transactions
             for _ in 0..transactions_per_burst {
@@ -81,13 +81,13 @@ where
                 }
                 self.stats.iterations += 1;
             }
-            
+
             // Brief pause between bursts
             if burst_num < bursts - 1 {
                 timing::delay_ms(10);
             }
         }
-        
+
         Ok(self.stats.clone())
     }
 
@@ -101,15 +101,15 @@ where
             let size = ((i % 32) + 1).min(32);
             let mut data = vec![0u8; size];
             patterns::pseudo_random(&mut data, i as u8);
-            
+
             match self.master.write(&data) {
                 Ok(_) => self.stats.record_success(),
                 Err(_) => self.stats.record_error(),
             }
-            
+
             self.stats.iterations += 1;
         }
-        
+
         Ok(self.stats.clone())
     }
 
@@ -121,20 +121,20 @@ where
         for i in 0..iterations {
             let mut data = [0u8; 32];
             patterns::pseudo_random(&mut data, (i * 7 + 13) as u8);
-            
+
             match self.master.write(&data) {
                 Ok(_) => self.stats.record_success(),
                 Err(_) => self.stats.record_error(),
             }
-            
+
             self.stats.iterations += 1;
-            
+
             // Occasional delay
             if i % 10 == 0 {
                 timing::delay_us(100);
             }
         }
-        
+
         Ok(self.stats.clone())
     }
 
@@ -145,7 +145,7 @@ where
     ) -> Result<StressTestStats, esp_hal::i2c::Error> {
         let data = [0xFFu8; 32];
         let start_timer = timing::Timer::new();
-        
+
         // No delays - maximum stress
         while start_timer.elapsed_ms() < duration_ms {
             match self.master.write(&data) {
@@ -154,7 +154,7 @@ where
             }
             self.stats.iterations += 1;
         }
-        
+
         self.stats.duration_ms = start_timer.elapsed_ms();
         Ok(self.stats.clone())
     }
@@ -255,21 +255,21 @@ where
     pub fn test_bus_error_recovery(&mut self) -> Result<RecoveryTestResult, esp_hal::i2c::Error> {
         let mut result = RecoveryTestResult::new();
         let data = [0x01, 0x02, 0x03];
-        
+
         // Trigger error (implementation-specific)
         match self.master.write(&data) {
             Ok(_) => result.initial_state = TestState::Success,
             Err(_) => result.initial_state = TestState::Error,
         }
-        
+
         // Try recovery
         timing::delay_ms(10);
-        
+
         match self.master.write(&data) {
             Ok(_) => result.recovery_state = TestState::Success,
             Err(_) => result.recovery_state = TestState::Error,
         }
-        
+
         Ok(result)
     }
 
@@ -277,28 +277,30 @@ where
     pub fn test_timeout_recovery(&mut self) -> Result<RecoveryTestResult, esp_hal::i2c::Error> {
         let mut result = RecoveryTestResult::new();
         let data = [0xAA];
-        
+
         // Attempt operation that might timeout
         match self.master.write(&data) {
             Ok(_) => result.initial_state = TestState::Success,
             Err(_) => result.initial_state = TestState::Error,
         }
-        
+
         // Recovery attempt
         timing::delay_ms(100);
-        
+
         match self.master.write(&data) {
             Ok(_) => result.recovery_state = TestState::Success,
             Err(_) => result.recovery_state = TestState::Error,
         }
-        
+
         Ok(result)
     }
 
     /// Test recovery from FIFO overflow
-    pub fn test_fifo_overflow_recovery(&mut self) -> Result<RecoveryTestResult, esp_hal::i2c::Error> {
+    pub fn test_fifo_overflow_recovery(
+        &mut self,
+    ) -> Result<RecoveryTestResult, esp_hal::i2c::Error> {
         let mut result = RecoveryTestResult::new();
-        
+
         // Try to overflow by rapid writes
         for _ in 0..5 {
             let data = [0xFFu8; 32];
@@ -310,84 +312,94 @@ where
                 }
             }
         }
-        
+
         if result.initial_state == TestState::Success {
             result.initial_state = TestState::Success;
         }
-        
+
         // Recovery attempt
         timing::delay_ms(50);
-        
+
         let data = [0xAAu8; 4];
         match self.master.write(&data) {
             Ok(_) => result.recovery_state = TestState::Success,
             Err(_) => result.recovery_state = TestState::Error,
         }
-        
+
         Ok(result)
     }
 
     /// Test repeated error recovery
-    pub fn test_repeated_recovery(&mut self, attempts: usize) -> Result<Vec<RecoveryTestResult>, esp_hal::i2c::Error> {
+    pub fn test_repeated_recovery(
+        &mut self,
+        attempts: usize,
+    ) -> Result<Vec<RecoveryTestResult>, esp_hal::i2c::Error> {
         let mut results = Vec::new();
-        
+
         for _ in 0..attempts {
             let mut result = RecoveryTestResult::new();
             let data = [0x12, 0x34];
-            
+
             // Trigger error
             match self.master.write(&data) {
                 Ok(_) => result.initial_state = TestState::Success,
                 Err(_) => result.initial_state = TestState::Error,
             }
-            
+
             // Immediate recovery
             match self.master.write(&data) {
                 Ok(_) => result.recovery_state = TestState::Success,
                 Err(_) => result.recovery_state = TestState::Error,
             }
-            
+
             results.push(result);
             timing::delay_ms(5);
         }
-        
+
         Ok(results)
     }
 
     /// Test recovery with address change
-    pub fn test_address_change_recovery(&mut self, wrong_addr: u8, correct_addr: u8) -> Result<RecoveryTestResult, esp_hal::i2c::Error> {
+    pub fn test_address_change_recovery(
+        &mut self,
+        wrong_addr: u8,
+        correct_addr: u8,
+    ) -> Result<RecoveryTestResult, esp_hal::i2c::Error> {
         let mut result = RecoveryTestResult::new();
         let data = [0x01, 0x02];
-        
+
         // Try wrong address
         self.master.set_slave_address(wrong_addr);
         match self.master.write(&data) {
             Ok(_) => result.initial_state = TestState::Success,
             Err(_) => result.initial_state = TestState::Error,
         }
-        
+
         // Switch to correct address
         self.master.set_slave_address(correct_addr);
         match self.master.write(&data) {
             Ok(_) => result.recovery_state = TestState::Success,
             Err(_) => result.recovery_state = TestState::Error,
         }
-        
+
         Ok(result)
     }
 
     /// Test graceful degradation under errors
-    pub fn test_graceful_degradation(&mut self, iterations: usize) -> Result<DegradationTestResult, esp_hal::i2c::Error> {
+    pub fn test_graceful_degradation(
+        &mut self,
+        iterations: usize,
+    ) -> Result<DegradationTestResult, esp_hal::i2c::Error> {
         let mut result = DegradationTestResult::new();
         let data = [0xAAu8; 4];
-        
+
         for _ in 0..iterations {
             match self.master.write(&data) {
                 Ok(_) => result.record_success(),
                 Err(_) => result.record_error(),
             }
         }
-        
+
         Ok(result)
     }
 }
@@ -418,8 +430,8 @@ impl RecoveryTestResult {
     }
 
     pub fn fully_successful(&self) -> bool {
-        matches!(self.initial_state, TestState::Success) &&
-        matches!(self.recovery_state, TestState::Success)
+        matches!(self.initial_state, TestState::Success)
+            && matches!(self.recovery_state, TestState::Success)
     }
 }
 
@@ -470,12 +482,12 @@ mod tests {
     #[test]
     fn test_stress_stats() {
         let mut stats = StressTestStats::new();
-        
+
         stats.record_success();
         stats.record_success();
         stats.record_error();
         stats.record_success();
-        
+
         assert_eq!(stats.successes, 3);
         assert_eq!(stats.errors, 1);
         assert_eq!(stats.consecutive_errors, 0);
@@ -488,7 +500,7 @@ mod tests {
             initial_state: TestState::Error,
             recovery_state: TestState::Success,
         };
-        
+
         assert!(result.recovered());
         assert!(!result.fully_successful());
     }
@@ -496,12 +508,12 @@ mod tests {
     #[test]
     fn test_degradation_result() {
         let mut result = DegradationTestResult::new();
-        
+
         result.record_success();
         result.record_success();
         result.record_error();
         result.record_success();
-        
+
         assert_eq!(result.success_rate(), 75.0);
         assert!(result.is_acceptable(70.0));
         assert!(!result.is_acceptable(80.0));

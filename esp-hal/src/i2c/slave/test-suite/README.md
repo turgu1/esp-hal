@@ -2,6 +2,21 @@
 
 This directory contains a comprehensive test suite for the I2C slave driver implementation.
 
+## Overview
+
+The test suite validates all aspects of the I2C slave driver, including:
+- Basic read/write operations
+- **write_read() with repeated START** (Tests 6a-6g, fully supported)
+- Address matching and FIFO management
+- Clock stretching and filtering
+- Async operations with embassy-executor
+- Performance and reliability
+- Integration with other peripherals
+
+**New in this version:** Comprehensive write_read() testing confirming that ESP32-C6 and modern chips fully support I2C repeated START transactions in normal mode (no special configuration required).
+
+See: `I2C_SLAVE_WRITE_READ_SUPPORT.md` for write_read() implementation details
+
 ## Test Organization
 
 The tests are organized into modules matching the categories in `TESTING.md`:
@@ -104,19 +119,28 @@ cargo test --package esp-hal --lib i2c::slave::test_suite --features hil-test
 The `master-support/` module provides I2C master implementations specifically designed for testing the slave driver:
 
 **Common utilities** (`common.rs`):
-- `TestMaster` wrapper around esp_hal I2C master
+- `TestMaster` wrapper around esp_hal I2C master with write_read() support
 - Pattern generators (sequential, constant, alternating, pseudo-random)
 - Timing utilities (Timer, delays)
 - Assertions for buffer comparison and timing validation
+- **NEW: write_read module** with register utilities and timing calculations
 
 **Test-specific masters**:
-- `functional.rs`: BasicCommMaster, AddressTestMaster, FifoTestMaster, ClockStretchMaster, FilterTestMaster, InterruptTestMaster, ErrorTestMaster
-- `async_support.rs`: AsyncTestMaster, AsyncOperationsMaster, ConcurrentTestMaster, FutureTestMaster
+- `functional.rs`: BasicCommMaster, AddressTestMaster, FifoTestMaster, ClockStretchMaster, FilterTestMaster, InterruptTestMaster, ErrorTestMaster, **WriteReadTestMaster**
+- `async_support.rs`: AsyncTestMaster, AsyncOperationsMaster, ConcurrentTestMaster, FutureTestMaster, **AsyncWriteReadTestMaster**
 - `performance.rs`: SpeedTestMaster, ThroughputTestMaster with result tracking
 - `reliability.rs`: StressTestMaster, RecoveryTestMaster with statistics
 - `integration.rs`: PeripheralIntegrationMaster, OsIntegrationMaster, AsyncFrameworkMaster
 
+**write_read() Support:**
+- `WriteReadTestMaster` - Blocking write_read tests (Tests 6a-6g)
+- `AsyncWriteReadTestMaster` - Async write_read tests with timeouts and retries
+- Register emulation utilities for sensor-like testing
+- ESP32 (original) master compatibility testing
+
 Each master provides methods to trigger specific slave behaviors and validate responses, making HIL tests easier to write and maintain.
+
+See: `master-support/WRITE_READ_SUPPORT.md` for master implementation details
 
 ## Test Categories
 
@@ -136,7 +160,13 @@ cargo test --lib i2c::slave::test_suite::unit
 ### Functional Tests (`functional/`)
 
 Tests requiring hardware (HIL):
-- Basic read/write operations
+- Basic read/write operations (Tests 1-6)
+- **write_read() with repeated START** (Tests 6a-6g)
+  - Single byte and multi-byte transfers
+  - Register-based mode (ESP32-C6) vs normal mode
+  - Maximum FIFO usage
+  - Atomic vs separate transactions
+  - ESP32 master compatibility
 - Address matching
 - FIFO operations
 - Clock stretching
@@ -148,16 +178,30 @@ Tests requiring hardware (HIL):
 cargo test --lib i2c::slave::test_suite::functional --features hil-test
 ```
 
+**write_read() tests specifically:**
+```bash
+cargo test --lib i2c::slave::test_suite::functional::basic_comm::test_write_read --features hil-test
+```
+
 ### Async Tests (`async_tests/`)
 
 Tests for async operations:
 - Async read/write
-- Concurrent operations
+- **Async write_read() with repeated START**
+  - Timeout handling
+  - Concurrent operations
+  - Progress monitoring
+  - Error recovery with retries
 - Future cancellation
 
 **Run with:**
 ```bash
 cargo test --lib i2c::slave::test_suite::async_tests --features hil-test
+```
+
+**Async write_read() tests:**
+```bash
+cargo test --lib i2c::slave::test_suite::async_tests::test_async_write_read --features hil-test
 ```
 
 ### Performance Tests (`performance/`)
@@ -234,27 +278,40 @@ mod tests {
 #[cfg(all(test, feature = "hil-test"))]
 mod hil_tests {
     use super::*;
-    use crate::i2c::slave::test_suite::helpers::MockMaster;
+    use crate::i2c::slave::test_suite::master_support::functional::WriteReadTestMaster;
 
     #[test]
-    fn test_feature_with_hardware() {
-        // Setup hardware
+    #[ignore = "Requires HIL setup"]
+    fn test_write_read_example() {
+        // Setup slave
         let peripherals = unsafe { Peripherals::steal() };
         let mut slave = I2c::new(peripherals.I2C0, Config::default())
             .unwrap()
             .with_sda(peripherals.GPIO1)
             .with_scl(peripherals.GPIO2);
         
-        // Create mock master
-        let mut master = MockMaster::new(0x55);
+        // Create master for testing
+        let mut master = WriteReadTestMaster::new(
+            peripherals.I2C1,
+            master_sda_pin,
+            master_scl_pin
+        ).unwrap();
         
-        // Test interaction
-        master.write(&[0xAA]);
-        let mut buffer = [0u8; 1];
-        let bytes = slave.read(&mut buffer).unwrap();
+        // Slave prepares to handle write_read
+        // Master: write_read([0x10], 4 bytes)
         
-        assert_eq!(bytes, 1);
-        assert_eq!(buffer[0], 0xAA);
+        // Write phase - slave receives register
+        let mut reg = [0u8; 1];
+        slave.read(&mut reg).unwrap();
+        assert_eq!(reg[0], 0x10);
+        
+        // Read phase - slave responds
+        let response = [0xAA, 0xBB, 0xCC, 0xDD];
+        slave.write(&response).unwrap();
+        
+        // Master validates response
+        let data = master.test_single_byte_write_read(0x10).unwrap();
+        assert_eq!(data, 0xAA);
     }
 }
 ```
@@ -310,15 +367,23 @@ cargo bench --bench i2c_slave_bench
 | Category | Tests | Status |
 |----------|-------|--------|
 | Unit Tests | 53+ | ✅ Implemented |
-| Functional Tests | 44+ HIL + 33+ unit | ✅ Implemented |
-| Async Tests | 15+ HIL + 8+ unit | ✅ Implemented |
+| Functional Tests | 50+ HIL + 33+ unit | ✅ Implemented |
+| **write_read() Tests** | **6 blocking + 4 async** | ✅ **Implemented** |
+| Async Tests | 19+ HIL + 8+ unit | ✅ Implemented |
 | Performance Tests | 12+ HIL + 3+ unit | ✅ Implemented |
 | Reliability Tests | 16+ HIL + 2+ unit | ✅ Implemented |
 | Integration Tests | 18+ HIL + 3+ unit | ✅ Implemented |
 
-**Total Tests Implemented:** 207+  
-- HIL (Hardware-in-Loop) tests: 105+
-- Unit/Documentation tests: 102+
+**Total Tests Implemented:** 227+  
+- HIL (Hardware-in-Loop) tests: 115+
+- Unit/Documentation tests: 112+
+- **write_read() specific tests: 10+ (6 blocking, 4+ async)**
+
+**New additions:**
+- Tests 6a-6g: write_read() repeated START testing
+- WriteReadTestMaster with 10 test methods
+- AsyncWriteReadTestMaster with 10 async test methods
+- write_read utilities in common.rs
 
 ## Known Issues
 
@@ -340,3 +405,8 @@ When adding new tests:
 - Parent test checklist: `../TESTING.md`
 - Driver implementation: `../mod.rs`
 - Design documentation: `../DESIGN.md`
+- **write_read() implementation:** `../I2C_SLAVE_WRITE_READ_SUPPORT.md`
+- **ESP32 compatibility:** `../ESP32_MASTER_COMPATIBILITY.md`
+- **Test suite updates:** `../TEST_SUITE_UPDATES.md`
+- **Master support:** `master-support/WRITE_READ_SUPPORT.md`
+

@@ -4,8 +4,8 @@
 
 use super::common::{TestMaster, TestMasterConfig, patterns, timing};
 use esp_hal::{
-    peripheral::Peripheral,
     gpio::{InputPin, OutputPin},
+    peripheral::Peripheral,
 };
 
 /// Master for peripheral integration testing
@@ -31,10 +31,13 @@ where
     }
 
     /// Test I2C while other peripheral is active (generic)
-    pub fn test_with_active_peripheral(&mut self, iterations: usize) -> Result<IntegrationTestResult, esp_hal::i2c::Error> {
+    pub fn test_with_active_peripheral(
+        &mut self,
+        iterations: usize,
+    ) -> Result<IntegrationTestResult, esp_hal::i2c::Error> {
         let mut result = IntegrationTestResult::new();
         let data = [0xAAu8; 16];
-        
+
         for _ in 0..iterations {
             // Perform I2C operation
             let timer = timing::Timer::new();
@@ -46,11 +49,11 @@ where
                     result.record_error();
                 }
             }
-            
+
             // Small delay for other peripheral activity
             timing::delay_ms(1);
         }
-        
+
         Ok(result)
     }
 
@@ -67,13 +70,17 @@ where
     }
 
     /// Test with GPIO interrupts active
-    pub fn test_with_gpio_interrupts(&mut self) -> Result<IntegrationTestResult, esp_hal::i2c::Error> {
+    pub fn test_with_gpio_interrupts(
+        &mut self,
+    ) -> Result<IntegrationTestResult, esp_hal::i2c::Error> {
         // Simulate GPIO interrupt load
         self.test_with_active_peripheral(100)
     }
 
     /// Test with timer interrupts active
-    pub fn test_with_timer_interrupts(&mut self) -> Result<IntegrationTestResult, esp_hal::i2c::Error> {
+    pub fn test_with_timer_interrupts(
+        &mut self,
+    ) -> Result<IntegrationTestResult, esp_hal::i2c::Error> {
         // Simulate periodic timer interrupts
         self.test_with_active_peripheral(100)
     }
@@ -98,7 +105,9 @@ where
     }
 
     /// Test with Bluetooth active (if available)
-    pub fn test_with_bluetooth_active(&mut self) -> Result<IntegrationTestResult, esp_hal::i2c::Error> {
+    pub fn test_with_bluetooth_active(
+        &mut self,
+    ) -> Result<IntegrationTestResult, esp_hal::i2c::Error> {
         // Bluetooth shares radio with WiFi
         self.test_interleaved_operations(30, 50)
     }
@@ -111,10 +120,10 @@ where
     ) -> Result<IntegrationTestResult, esp_hal::i2c::Error> {
         let mut result = IntegrationTestResult::new();
         let mut data = [0u8; 16];
-        
+
         for i in 0..iterations {
             patterns::sequential(&mut data, i as u8);
-            
+
             let timer = timing::Timer::new();
             match self.master.write(&data) {
                 Ok(_) => {
@@ -124,20 +133,22 @@ where
                     result.record_error();
                 }
             }
-            
+
             // Simulate other peripheral activity
             timing::delay_ms(delay_ms);
         }
-        
+
         Ok(result)
     }
 
     /// Test interrupt priority handling
-    pub fn test_interrupt_priorities(&mut self) -> Result<IntegrationTestResult, esp_hal::i2c::Error> {
+    pub fn test_interrupt_priorities(
+        &mut self,
+    ) -> Result<IntegrationTestResult, esp_hal::i2c::Error> {
         // Rapid transactions to test interrupt handling
         let mut result = IntegrationTestResult::new();
         let data = [0x01, 0x02, 0x03];
-        
+
         for _ in 0..100 {
             let timer = timing::Timer::new();
             match self.master.write(&data) {
@@ -145,16 +156,18 @@ where
                 Err(_) => result.record_error(),
             }
         }
-        
+
         Ok(result)
     }
 
     /// Test shared resource contention
-    pub fn test_resource_contention(&mut self) -> Result<IntegrationTestResult, esp_hal::i2c::Error> {
+    pub fn test_resource_contention(
+        &mut self,
+    ) -> Result<IntegrationTestResult, esp_hal::i2c::Error> {
         // Stress test with minimal delays
         let mut result = IntegrationTestResult::new();
         let data = [0xFFu8; 32];
-        
+
         for _ in 0..50 {
             let timer = timing::Timer::new();
             match self.master.write(&data) {
@@ -163,7 +176,7 @@ where
             }
             timing::delay_us(100); // Minimal delay
         }
-        
+
         Ok(result)
     }
 }
@@ -255,32 +268,35 @@ where
     pub fn test_blocking_operation(&mut self) -> Result<(), esp_hal::i2c::Error> {
         let data = [0x01, 0x02, 0x03, 0x04];
         self.master.write(&data)?;
-        
+
         timing::delay_ms(10);
-        
+
         let mut buffer = [0u8; 4];
         self.master.read(&mut buffer)?;
-        
+
         Ok(())
     }
 
     /// Test with message passing pattern
-    pub fn test_message_passing(&mut self, iterations: usize) -> Result<Vec<[u8; 4]>, esp_hal::i2c::Error> {
+    pub fn test_message_passing(
+        &mut self,
+        iterations: usize,
+    ) -> Result<Vec<[u8; 4]>, esp_hal::i2c::Error> {
         let mut messages = Vec::new();
-        
+
         for i in 0..iterations {
             let mut data = [0u8; 4];
             patterns::sequential(&mut data, i as u8);
-            
+
             self.master.write(&data)?;
             timing::delay_ms(5);
-            
+
             let mut response = [0u8; 4];
             self.master.read(&mut response)?;
-            
+
             messages.push(response);
         }
-        
+
         Ok(messages)
     }
 
@@ -296,10 +312,12 @@ where
     }
 
     /// Test task priority impact
-    pub fn test_task_priority_impact(&mut self) -> Result<IntegrationTestResult, esp_hal::i2c::Error> {
+    pub fn test_task_priority_impact(
+        &mut self,
+    ) -> Result<IntegrationTestResult, esp_hal::i2c::Error> {
         let mut result = IntegrationTestResult::new();
         let data = [0x12, 0x34];
-        
+
         for _ in 0..50 {
             let timer = timing::Timer::new();
             match self.master.write(&data) {
@@ -308,7 +326,7 @@ where
             }
             timing::delay_ms(10); // Allow task scheduling
         }
-        
+
         Ok(result)
     }
 
@@ -318,10 +336,10 @@ where
         for _ in 0..20 {
             // "Acquire mutex"
             timing::delay_us(10);
-            
+
             let data = [0x55u8; 4];
             self.master.write(&data)?;
-            
+
             // "Release mutex"
             timing::delay_us(10);
         }
@@ -331,14 +349,14 @@ where
     /// Test event notification pattern
     pub fn test_event_notification(&mut self) -> Result<Vec<u8>, esp_hal::i2c::Error> {
         let mut events = Vec::new();
-        
+
         for i in 0..10 {
             let data = [i as u8];
             self.master.write(&data)?;
             events.push(i as u8);
             timing::delay_ms(15);
         }
-        
+
         Ok(events)
     }
 }
@@ -370,18 +388,21 @@ where
         let data = [0x01, 0x02, 0x03];
         self.master.write(&data)?;
         timing::delay_ms(10);
-        
+
         let mut buffer = [0u8; 3];
         self.master.read(&mut buffer)?;
-        
+
         Ok(())
     }
 
     /// Test rapid operations for async executor stress
-    pub fn test_async_executor_stress(&mut self, iterations: usize) -> Result<IntegrationTestResult, esp_hal::i2c::Error> {
+    pub fn test_async_executor_stress(
+        &mut self,
+        iterations: usize,
+    ) -> Result<IntegrationTestResult, esp_hal::i2c::Error> {
         let mut result = IntegrationTestResult::new();
         let data = [0xAAu8; 4];
-        
+
         for _ in 0..iterations {
             let timer = timing::Timer::new();
             match self.master.write(&data) {
@@ -390,26 +411,29 @@ where
             }
             timing::delay_us(500); // Minimal delay
         }
-        
+
         Ok(result)
     }
 
     /// Test for channel-based communication pattern
-    pub fn test_channel_pattern(&mut self, messages: usize) -> Result<Vec<[u8; 4]>, esp_hal::i2c::Error> {
+    pub fn test_channel_pattern(
+        &mut self,
+        messages: usize,
+    ) -> Result<Vec<[u8; 4]>, esp_hal::i2c::Error> {
         let mut responses = Vec::new();
-        
+
         for i in 0..messages {
             let mut data = [0u8; 4];
             patterns::sequential(&mut data, i as u8);
             self.master.write(&data)?;
-            
+
             timing::delay_ms(5);
-            
+
             let mut response = [0u8; 4];
             self.master.read(&mut response)?;
             responses.push(response);
         }
-        
+
         Ok(responses)
     }
 }
@@ -421,12 +445,12 @@ mod tests {
     #[test]
     fn test_integration_result() {
         let mut result = IntegrationTestResult::new();
-        
+
         result.record_success(1000);
         result.record_success(2000);
         result.record_error();
         result.record_success(1500);
-        
+
         assert_eq!(result.attempts, 4);
         assert_eq!(result.successes, 3);
         assert_eq!(result.errors, 1);
@@ -437,10 +461,10 @@ mod tests {
     #[test]
     fn test_timing_variance() {
         let mut result = IntegrationTestResult::new();
-        
+
         result.record_success(1000);
         result.record_success(3000);
-        
+
         assert_eq!(result.timing_variance(), 2000);
     }
 }

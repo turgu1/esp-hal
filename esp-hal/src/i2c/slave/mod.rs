@@ -2005,32 +2005,3 @@ impl AnyI2c<'_> {
         self.enable_peri_interrupt(handler.priority());
     }
 }
-
-// mod any {
-//     use super::*;
-
-//     pub trait Degrade {
-//         fn degrade(self) -> AnyI2c<'static>;
-//     }
-
-//     impl Degrade for AnyI2c<'_> {
-//         fn degrade(self) -> AnyI2c<'static> {
-//             AnyI2c::I2c0(unsafe { core::mem::transmute(self) })
-//         }
-//     }
-
-//     macro_rules! impl_degrade {
-//         ($inst:ident) => {
-//             impl Degrade for crate::peripherals::$inst<'_> {
-//                 fn degrade(self) -> AnyI2c<'static> {
-//                     AnyI2c::$inst(unsafe { core::mem::transmute(self) })
-//                 }
-//             }
-//         };
-//     }
-
-//     #[cfg(i2c_master_i2c0)]
-//     impl_degrade!(I2c0);
-//     #[cfg(i2c_master_i2c1)]
-//     impl_degrade!(I2c1);
-// }

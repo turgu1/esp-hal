@@ -10,10 +10,10 @@ mod hil_tests {
         // Test async write operation
         // Setup: Master writes data to slave asynchronously
         // Expected: Slave receives data without blocking
-        
+
         /*
         use embassy_executor::Spawner;
-        
+
         #[embassy_executor::task]
         async fn slave_task() {
             let peripherals = unsafe { Peripherals::steal() };
@@ -21,10 +21,10 @@ mod hil_tests {
                 .unwrap()
                 .with_sda(peripherals.GPIO1)
                 .with_scl(peripherals.GPIO2);
-            
+
             let mut buffer = [0u8; 32];
             let result = slave.read(&mut buffer).await;
-            
+
             assert!(result.is_ok());
         }
         */
@@ -36,7 +36,7 @@ mod hil_tests {
         // Test async read operation
         // Setup: Slave provides data, master reads asynchronously
         // Expected: Data transferred without blocking
-        
+
         /*
         #[embassy_executor::task]
         async fn slave_task() {
@@ -45,10 +45,10 @@ mod hil_tests {
                 .unwrap()
                 .with_sda(peripherals.GPIO1)
                 .with_scl(peripherals.GPIO2);
-            
+
             let data = [0x01, 0x02, 0x03, 0x04];
             let result = slave.write(&data).await;
-            
+
             assert!(result.is_ok());
         }
         */
@@ -59,7 +59,7 @@ mod hil_tests {
     fn test_async_write_read_sequence() {
         // Test sequential async operations
         // Expected: Multiple operations complete correctly
-        
+
         /*
         #[embassy_executor::task]
         async fn slave_task() {
@@ -68,15 +68,15 @@ mod hil_tests {
                 .unwrap()
                 .with_sda(peripherals.GPIO1)
                 .with_scl(peripherals.GPIO2);
-            
+
             // First transaction: read
             let mut rx_buffer = [0u8; 4];
             slave.read(&mut rx_buffer).await.unwrap();
-            
+
             // Second transaction: write
             let tx_data = [0xAA, 0xBB, 0xCC, 0xDD];
             slave.write(&tx_data).await.unwrap();
-            
+
             // Third transaction: read again
             let mut rx_buffer2 = [0u8; 4];
             slave.read(&mut rx_buffer2).await.unwrap();
@@ -89,10 +89,10 @@ mod hil_tests {
     fn test_async_timeout() {
         // Test async operation with timeout
         // Expected: Operation completes or times out gracefully
-        
+
         /*
         use embassy_time::{Duration, with_timeout};
-        
+
         #[embassy_executor::task]
         async fn slave_task() {
             let peripherals = unsafe { Peripherals::steal() };
@@ -100,13 +100,13 @@ mod hil_tests {
                 .unwrap()
                 .with_sda(peripherals.GPIO1)
                 .with_scl(peripherals.GPIO2);
-            
+
             let mut buffer = [0u8; 32];
             let result = with_timeout(
                 Duration::from_millis(100),
                 slave.read(&mut buffer)
             ).await;
-            
+
             // Should timeout or complete
             assert!(result.is_ok() || result.is_err());
         }
@@ -118,7 +118,7 @@ mod hil_tests {
     fn test_async_with_interrupts() {
         // Test async operations with interrupt-driven I/O
         // Expected: Efficient CPU usage, operations complete correctly
-        
+
         /*
         #[embassy_executor::task]
         async fn slave_task() {
@@ -127,10 +127,146 @@ mod hil_tests {
                 .unwrap()
                 .with_sda(peripherals.GPIO1)
                 .with_scl(peripherals.GPIO2);
-            
+
             // Should use interrupts, not polling
             let mut buffer = [0u8; 32];
             slave.read(&mut buffer).await.unwrap();
+        }
+        */
+    }
+
+    #[test]
+    #[ignore = "Requires HIL setup with async executor"]
+    fn test_async_write_read_repeated_start() {
+        // Test async write_read() with repeated START
+        // Expected: Atomic transaction with no STOP between phases
+
+        /*
+        #[embassy_executor::task]
+        async fn slave_task() {
+            let peripherals = unsafe { Peripherals::steal() };
+            let mut slave = I2c::new_async(peripherals.I2C0, Config::default())
+                .unwrap()
+                .with_sda(peripherals.GPIO1)
+                .with_scl(peripherals.GPIO2);
+
+            // Master performs write_read([0x30], 4 byte read)
+
+            // Write phase - receive register address
+            let mut reg_addr = [0u8; 1];
+            slave.read(&mut reg_addr).await.unwrap();
+            let register = reg_addr[0];
+
+            // Prepare response based on register
+            let response = match register {
+                0x30 => [0x11, 0x22, 0x33, 0x44],
+                _ => [0x00, 0x00, 0x00, 0x00],
+            };
+
+            // Read phase - send response (repeated START, no STOP)
+            slave.write(&response).await.unwrap();
+        }
+        */
+    }
+
+    #[test]
+    #[ignore = "Requires HIL setup with async executor"]
+    #[cfg(esp32c6)]
+    fn test_async_write_read_register_mode() {
+        // Test async write_read() with register-based mode
+        // Expected: Hardware separates register address automatically
+
+        /*
+        #[embassy_executor::task]
+        async fn slave_task() {
+            let peripherals = unsafe { Peripherals::steal() };
+            let config = Config::default().with_register_based_mode(true);
+            let mut slave = I2c::new_async(peripherals.I2C0, config)
+                .unwrap()
+                .with_sda(peripherals.GPIO1)
+                .with_scl(peripherals.GPIO2);
+
+            // Master performs write_read()
+
+            // Receive data (register address handled by hardware)
+            let mut data = [0u8; 32];
+            let bytes = slave.read(&mut data).await.unwrap();
+
+            // Get register address from hardware
+            let register = slave.read_register_address();
+
+            // Prepare response based on register
+            let response = match register {
+                0x40 => &[0xAB, 0xCD, 0xEF][..],
+                0x41 => &[0x12, 0x34][..],
+                _ => &[0xFF][..],
+            };
+
+            slave.write(response).await.unwrap();
+        }
+        */
+    }
+
+    #[test]
+    #[ignore = "Requires HIL setup with async executor"]
+    fn test_async_concurrent_write_read_operations() {
+        // Test multiple async write_read sequences
+        // Expected: All operations complete in order without conflicts
+
+        /*
+        #[embassy_executor::task]
+        async fn slave_task() {
+            let peripherals = unsafe { Peripherals::steal() };
+            let mut slave = I2c::new_async(peripherals.I2C0, Config::default())
+                .unwrap()
+                .with_sda(peripherals.GPIO1)
+                .with_scl(peripherals.GPIO2);
+
+            // Handle multiple write_read transactions
+            for i in 0..5 {
+                // Receive command
+                let mut cmd = [0u8; 1];
+                slave.read(&mut cmd).await.unwrap();
+
+                // Send response
+                let response = [i, i + 1, i + 2];
+                slave.write(&response).await.unwrap();
+            }
+        }
+        */
+    }
+
+    #[test]
+    #[ignore = "Requires HIL setup with async executor"]
+    fn test_async_write_read_with_timeout() {
+        // Test async write_read with timeout
+        // Expected: Complete within timeout or handle gracefully
+
+        /*
+        use embassy_time::{Duration, with_timeout};
+
+        #[embassy_executor::task]
+        async fn slave_task() {
+            let peripherals = unsafe { Peripherals::steal() };
+            let mut slave = I2c::new_async(peripherals.I2C0, Config::default())
+                .unwrap()
+                .with_sda(peripherals.GPIO1)
+                .with_scl(peripherals.GPIO2);
+
+            // Wait for write_read with timeout
+            let mut reg_addr = [0u8; 1];
+            let result = with_timeout(
+                Duration::from_millis(100),
+                slave.read(&mut reg_addr)
+            ).await;
+
+            if result.is_ok() {
+                let response = [0xAA, 0xBB];
+                let _ = with_timeout(
+                    Duration::from_millis(50),
+                    slave.write(&response)
+                ).await;
+            }
         }
         */
     }
@@ -142,7 +278,7 @@ mod unit_tests {
     fn test_async_mode_type() {
         // Test that Async mode type exists
         // use crate::i2c::slave::Async;
-        
+
         // Type should be available for I2c<'d, Async>
     }
 
@@ -188,7 +324,7 @@ mod behavioral_docs {
         // - Direct function calls
         // - CPU busy-waits
         // - Good for simple applications
-        
+
         // Async mode:
         // - More complex setup
         // - Requires executor
