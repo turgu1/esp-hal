@@ -1,0 +1,20 @@
+# espflash configuration for I2C Slave Async Test
+
+[connection]
+# Serial port will be auto-detected unless specified in .espflash-port.toml
+# baudrate = 921600
+
+[build]
+# Build in release mode by default
+release = true
+
+[flash]
+# Monitor after flashing
+monitor = true
+
+# Flash settings
+# erase_parts = "all"  # Uncomment to erase all flash before flashing
+
+[monitor]
+# Monitor settings
+speed = 115200

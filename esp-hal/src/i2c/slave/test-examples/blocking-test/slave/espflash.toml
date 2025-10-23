@@ -1,0 +1,5 @@
+format = "EspIdf"
+
+[idf_format_args]
+
+[flash]

@@ -1,0 +1,10 @@
+# Port configuration for espflash
+# Copy this file to .espflash-port.toml and customize with your serial port
+# This file is ignored by git (.gitignore)
+
+[connection]
+# Uncomment and set your serial port:
+# serial = "/dev/ttyUSB0"      # Linux
+serial = "/dev/ttyACM0"      # Linux (alternative)
+# serial = "/dev/cu.usbserial-*" # macOS
+# serial = "COM3"              # Windows
