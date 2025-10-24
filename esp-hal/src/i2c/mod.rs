@@ -11,6 +11,18 @@
 pub mod master;
 pub mod slave;
 
+/// Async interrupt-driven I2C slave driver
+///
+/// This module provides a true async I2C slave implementation that uses
+/// hardware interrupts to achieve zero CPU usage while waiting for I2C
+/// communication, enabling concurrent task execution on a single core.
+///
+/// See module documentation for detailed information and usage examples.
+#[cfg_attr(not(feature = "unstable"), doc(hidden))]
+crate::unstable_module! {
+    pub mod slave_async;
+}
+
 #[cfg(soc_has_lp_i2c0)]
 crate::unstable_module! {
     pub mod lp_i2c;

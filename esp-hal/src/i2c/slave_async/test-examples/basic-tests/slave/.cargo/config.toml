@@ -1,0 +1,9 @@
+[build]
+target = "riscv32imac-unknown-none-elf"
+
+[target.riscv32imac-unknown-none-elf]
+runner = "espflash flash --monitor"
+
+[env]
+ESP_LOG_LEVEL = "INFO"
+DEFMT_LOG = "info"
