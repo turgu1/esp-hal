@@ -29,30 +29,30 @@
 //!
 //! ```text
 //! ┌──────────────────────────────────────────────────────────────┐
-//! │                     I2C Master                                │
-//! └──────────────┬───────────────────────────────┬────────────────┘
+//! │                     I2C Master                               │
+//! └──────────────┬───────────────────────────────┬───────────────┘
 //!                │ START + Address               │ Data bytes
 //!                ▼                               ▼
 //! ┌──────────────────────────────────────────────────────────────┐
-//! │              ESP32 Hardware (I2C Peripheral)                  │
+//! │              ESP32 Hardware (I2C Peripheral)                 │
 //! │  ┌────────────────────────────────────────────────────────┐  │
-//! │  │  FIFO (32 bytes)  │  Address Match  │  Clock Stretch  │  │
+//! │  │  FIFO (32 bytes)  │  Address Match  │  Clock Stretch   │  │
 //! │  └────────────────────────────────────────────────────────┘  │
 //! └───────────────┬──────────────────────────────────────────────┘
 //!                 │ Interrupts
 //!                 ▼
 //! ┌──────────────────────────────────────────────────────────────┐
-//! │           Interrupt Handler (Fast, <1µs)                      │
-//! │  • Address Match → Setup state                                │
-//! │  • RX FIFO → Read bytes into buffer                           │
-//! │  • TX FIFO → Write bytes from buffer                          │
-//! │  • Transaction Complete → Wake async task                     │
+//! │           Interrupt Handler (Fast, <1µs)                     │
+//! │  • Address Match → Setup state                               │
+//! │  • RX FIFO → Read bytes into buffer                          │
+//! │  • TX FIFO → Write bytes from buffer                         │
+//! │  • Transaction Complete → Wake async task                    │
 //! └───────────────┬──────────────────────────────────────────────┘
 //!                 │ Waker::wake()
 //!                 ▼
 //! ┌──────────────────────────────────────────────────────────────┐
-//! │              Async Task (User Code)                           │
-//! │  loop {                                                       │
+//! │              Async Task (User Code)                          │
+//! │  loop {                                                      │
 //! │      slave.read_async(&mut buf).await?; // No blocking!      │
 //! │      process_command(&buf).await;       // Other tasks run   │
 //! │      slave.write_async(&response).await?;                    │
@@ -264,7 +264,6 @@ use crate::{
     },
     interrupt::{self, InterruptHandler, Priority},
     pac::i2c0::RegisterBlock,
-    peripheral::Peripheral,
     private, ram,
     system::PeripheralGuard,
 };
@@ -277,6 +276,10 @@ pub use config::*;
 
 mod instance;
 use instance::*;
+
+// Re-export interrupt counter function for external access
+#[cfg(i2c_slave_i2c0)]
+pub use instance::get_i2c0_interrupt_count;
 
 mod driver;
 use driver::*;
@@ -437,6 +440,10 @@ pub enum Error {
     BusBusy,
     /// TX FIFO overflow.
     TxFifoOverflow,
+    /// TX FIFO underflow.
+    TxFifoUnderflow,
+    /// RX FIFO overflow.
+    RxFifoOverflow,
     /// RX FIFO underflow.
     RxFifoUnderflow,
     /// Buffer too small for operation.
@@ -465,6 +472,8 @@ impl core::fmt::Display for Error {
             }
             Error::BusBusy => write!(f, "Bus is busy"),
             Error::TxFifoOverflow => write!(f, "TX FIFO overflow"),
+            Error::TxFifoUnderflow => write!(f, "TX FIFO underflow"),
+            Error::RxFifoOverflow => write!(f, "RX FIFO overflow"),
             Error::RxFifoUnderflow => write!(f, "RX FIFO underflow"),
             Error::BufferTooSmall => write!(f, "Buffer too small for operation"),
             Error::NotInitialized => write!(f, "Driver not initialized"),
@@ -563,7 +572,7 @@ impl<'d> SlaveAsync<'d> {
         let scl_pin = PinGuard::new_unconnected(i2c.info().scl_output);
 
         let mut slave = SlaveAsync {
-            i2c: i2c.degrade(),
+            i2c: instance::any::Degrade::degrade(i2c),
             phantom: PhantomData,
             guard,
             config: DriverConfig {
@@ -574,31 +583,45 @@ impl<'d> SlaveAsync<'d> {
         };
 
         slave.apply_config(&config)?;
+        
+        // Step 1: Set up interrupt handler AFTER degradation using proper delegation
+        // This only binds the handler but doesn't enable peripheral interrupts yet
+        slave.set_interrupt_handler(slave.driver().info.async_handler);
+        
+        // Step 2: Clear any interrupts that might have been generated during configuration
+        slave.driver().info.clear_interrupts(enumset::EnumSet::all());
+        
+        // Step 3: Enable peripheral interrupts BEFORE enabling any interrupt sources
+        // This prevents any interrupt events from triggering when peripheral is enabled
+        slave.enable_peripheral_interrupts(Priority::Priority3);
+
+        // Step 4: Only after peripheral interrupts are enabled, enable interrupt sources
         slave.setup_interrupts();
 
         Ok(slave)
     }
 
     fn setup_interrupts(&mut self) {
-        self.set_interrupt_handler(self.driver().info.async_handler);
+        // Interrupt handler is already set during initialization
+        // Just enable the interrupt sources we need
 
-        // Enable all relevant interrupts
+        // Enable essential interrupts for I2C slave operation + Timeout for testing
         self.driver().info.enable_listen(
             Event::AddressMatch
                 | Event::RxFifoThreshold
-                | Event::TxFifoThreshold
                 | Event::TransComplete
-                | Event::StopDetected
-                | Event::ArbitrationLost
-                | Event::Timeout
-                | Event::RxFifoOverflow
-                | Event::TxFifoUnderflow,
+                | Event::Timeout,
             true,
         );
+
     }
 
     fn set_interrupt_handler(&mut self, handler: InterruptHandler) {
         self.i2c.set_interrupt_handler(handler);
+    }
+    
+    fn enable_peripheral_interrupts(&mut self, priority: Priority) {
+        self.i2c.enable_peripheral_interrupts(priority);
     }
 
     fn driver(&self) -> Driver<'_> {
@@ -607,6 +630,11 @@ impl<'d> SlaveAsync<'d> {
             state: self.i2c.state(),
             config: &self.config,
         }
+    }
+
+    /// Get the number of interrupts handled since initialization.
+    pub fn get_interrupt_counter(&self) -> u32 {
+        self.driver().state.get_interrupt_count()
     }
 
     /// Connect a pin to the I2C SDA signal.

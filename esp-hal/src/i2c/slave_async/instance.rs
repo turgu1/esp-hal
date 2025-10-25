@@ -4,8 +4,7 @@ use crate::{
     gpio::{InputSignal, OutputSignal},
     interrupt::{InterruptHandler, Priority},
     pac::i2c0::RegisterBlock,
-    peripheral::Peripheral,
-    system,
+    system::{self, Peripheral},
 };
 
 use super::{Event, driver::async_handler, state::State};
@@ -81,7 +80,7 @@ impl Info {
                     Event::RxFifoOverflow => w,
 
                     #[cfg(not(esp32))]
-                    Event::TxFifoUnderflow => w.txfifo_udf().bit(enable),
+                    Event::TxFifoUnderflow => w.rxfifo_udf().bit(enable),
                     #[cfg(esp32)]
                     Event::TxFifoUnderflow => w,
                 };
@@ -131,7 +130,7 @@ impl Info {
                     Event::RxFifoOverflow => w,
 
                     #[cfg(not(esp32))]
-                    Event::TxFifoUnderflow => w.txfifo_udf().clear_bit_by_one(),
+                    Event::TxFifoUnderflow => w.rxfifo_udf().clear_bit_by_one(),
                     #[cfg(esp32)]
                     Event::TxFifoUnderflow => w,
                 };
@@ -150,31 +149,36 @@ impl PartialEq for Info {
 unsafe impl Sync for Info {}
 
 /// Trait implemented by I2C peripheral instances
-pub trait Instance: Peripheral<P = Self> + 'static {
+/// A peripheral singleton compatible with the I2C slave driver.
+pub trait Instance: crate::private::Sealed + any::Degrade {
     /// Get peripheral info and state
     fn parts(&self) -> (&Info, &State);
 
-    /// Degrade to any I2C instance
-    fn degrade(self) -> AnyI2cSlave<'static>
-    where
-        Self: Sized,
-    {
-        AnyI2cSlave {
-            info: self.parts().0,
-            state: self.parts().1,
-        }
+    /// Get peripheral info
+    fn info(&self) -> &Info {
+        self.parts().0
     }
+
+    /// Get peripheral state
+    fn state(&self) -> &State {
+        self.parts().1
+    }
+
+    /// Set interrupt handler on the concrete peripheral
+    fn set_interrupt_handler(&self, handler: InterruptHandler);
+    
+    /// Enable peripheral interrupts (call after handler is set and peripheral is configured)
+    fn enable_peripheral_interrupts(&self, priority: Priority);
 }
 
 /// Macro to implement peripheral instances
 macro_rules! impl_instance {
     ($inst:ident, $peri:ident, $irq:ident, $scl:ident, $sda:ident) => {
-        impl Instance for crate::peripherals::$inst {
+        impl Instance for crate::peripherals::$inst<'_> {
             fn parts(&self) -> (&Info, &State) {
-                #[crate::macros::handler]
+                #[crate::handler]
                 fn irq_handler() {
-                    let (info, state) = Self::parts_static();
-                    async_handler(info, state);
+                    async_handler(&PERIPHERAL, &STATE);
                 }
 
                 static STATE: State = State::new();
@@ -191,60 +195,25 @@ macro_rules! impl_instance {
 
                 (&PERIPHERAL, &STATE)
             }
-        }
-
-        impl crate::peripherals::$inst {
-            fn parts_static() -> (&'static Info, &'static State) {
-                static STATE: State = State::new();
-
-                static PERIPHERAL: Info = Info {
-                    register_block: crate::peripherals::$inst::ptr(),
-                    peripheral: crate::system::Peripheral::$peri,
-                    async_handler: Self::irq_handler_static,
-                    scl_output: OutputSignal::$scl,
-                    scl_input: InputSignal::$scl,
-                    sda_output: OutputSignal::$sda,
-                    sda_input: InputSignal::$sda,
-                };
-
-                (&PERIPHERAL, &STATE)
-            }
-
-            #[crate::macros::handler]
-            fn irq_handler_static() {
-                let (info, state) = Self::parts_static();
-                async_handler(info, state);
-            }
-
-            fn bind_peri_interrupt(&self, handler: crate::interrupt::IsrCallback) {
-                unsafe {
-                    crate::interrupt::bind_interrupt(crate::peripherals::Interrupt::$irq, handler);
-                }
-            }
-
-            fn disable_peri_interrupt(&self) {
-                crate::interrupt::disable(
-                    crate::interrupt::CpuInterrupt::Interrupt0LevelPriority1,
-                    crate::peripherals::Interrupt::$irq,
-                );
-            }
-
-            fn enable_peri_interrupt(&self, priority: Priority) {
-                crate::interrupt::enable(crate::peripherals::Interrupt::$irq, priority).unwrap();
-            }
 
             fn set_interrupt_handler(&self, handler: InterruptHandler) {
+                // First, ensure peripheral interrupt is disabled
                 self.disable_peri_interrupt();
 
                 let (info, _) = self.parts();
+                // Disable all interrupt listening
                 info.enable_listen(enumset::EnumSet::all(), false);
+                // Clear any pending interrupts
                 info.clear_interrupts(enumset::EnumSet::all());
 
+                // Bind the handler but don't enable peripheral interrupt yet
+                // We'll enable it after the driver is fully configured
                 self.bind_peri_interrupt(handler.handler());
-                self.enable_peri_interrupt(handler.priority());
+                // Note: NOT calling enable_peri_interrupt here
             }
-
-            fn set_interrupt_priority(&self, priority: Priority) {
+            
+            fn enable_peripheral_interrupts(&self, priority: Priority) {
+                // Enable peripheral interrupt only after everything is configured
                 self.enable_peri_interrupt(priority);
             }
         }
@@ -255,29 +224,37 @@ macro_rules! impl_instance {
 #[cfg(i2c_slave_i2c0)]
 impl_instance!(I2C0, I2cExt0, I2C_EXT0, I2CEXT0_SCL, I2CEXT0_SDA);
 
-// Implement for I2C1
-#[cfg(i2c_slave_i2c1)]
-impl_instance!(I2C1, I2cExt1, I2C_EXT1, I2CEXT1_SCL, I2CEXT1_SDA);
-
-/// Type-erased I2C slave instance
-pub struct AnyI2cSlave<'d> {
-    pub(crate) info: &'d Info,
-    pub(crate) state: &'d State,
+crate::any_peripheral! {
+    /// Any I2C slave peripheral.
+    pub peripheral AnyI2cSlave<'d> {
+        #[cfg(i2c_slave_i2c0)]
+        I2c0(crate::peripherals::I2C0<'d>),
+        #[cfg(i2c_slave_i2c1)]
+        I2c1(crate::peripherals::I2C1<'d>),
+    }
 }
 
-impl<'d> AnyI2cSlave<'d> {
-    pub(crate) fn info(&self) -> &'d Info {
-        self.info
+impl Instance for AnyI2cSlave<'_> {
+    fn parts(&self) -> (&Info, &State) {
+        any::delegate!(self, i2c => { i2c.parts() })
     }
 
-    pub(crate) fn state(&self) -> &'d State {
-        self.state
+    fn set_interrupt_handler(&self, handler: InterruptHandler) {
+        any::delegate!(self, i2c => { i2c.set_interrupt_handler(handler) })
+    }
+    
+    fn enable_peripheral_interrupts(&self, priority: Priority) {
+        any::delegate!(self, i2c => { i2c.enable_peripheral_interrupts(priority) })
+    }
+}
+
+impl AnyI2cSlave<'_> {
+    pub(crate) fn info(&self) -> &Info {
+        self.parts().0
     }
 
-    pub(crate) fn set_interrupt_handler(&self, handler: InterruptHandler) {
-        // Implementations should be added per-chip
-        // For now, this is a placeholder
-        _ = handler;
+    pub(crate) fn state(&self) -> &State {
+        self.parts().1
     }
 
     pub(crate) fn set_interrupt_priority(&self, priority: Priority) {
@@ -286,15 +263,19 @@ impl<'d> AnyI2cSlave<'d> {
     }
 }
 
-impl core::fmt::Debug for AnyI2cSlave<'_> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("AnyI2cSlave").finish()
-    }
+/// Get interrupt counter for I2C0 (if available)
+/// This allows access to the interrupt counter from other tasks
+#[cfg(i2c_slave_i2c0)]
+pub fn get_i2c0_interrupt_count() -> u32 {
+    use crate::peripherals::I2C0;
+    let i2c = unsafe { I2C0::steal() };
+    i2c.state().get_interrupt_count()
 }
 
-#[cfg(feature = "defmt")]
-impl defmt::Format for AnyI2cSlave<'_> {
-    fn format(&self, f: defmt::Formatter) {
-        defmt::write!(f, "AnyI2cSlave")
-    }
-}
+// Implement for I2C1
+#[cfg(i2c_slave_i2c1)]
+impl_instance!(I2C1, I2cExt1, I2C_EXT1, I2CEXT1_SCL, I2CEXT1_SDA);
+
+
+
+

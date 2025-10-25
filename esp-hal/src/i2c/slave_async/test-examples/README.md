@@ -92,9 +92,9 @@ led_task() {
 ```
 ┌────────────────────────────────────────────────────────────────┐
 │                  Master Board (Blocking)                       │
-│  • Sends test commands (0x01, 0x10, 0x20, 0x30, 0x40)        │
+│  • Sends test commands (0x01, 0x10, 0x20, 0x30, 0x40)          │
 │  • Validates responses                                         │
-│  • Reports PASS/FAIL                                          │
+│  • Reports PASS/FAIL                                           │
 └───────────────────────┬────────────────────────────────────────┘
                         │ I2C Bus
                         │ (SDA/SCL + pull-ups)
@@ -102,30 +102,30 @@ led_task() {
 ┌───────────────────────┴────────────────────────────────────────┐
 │                  Slave Board (Async)                           │
 │                                                                │
-│  ┌─────────────────────────────────────────────────────────┐  │
-│  │  Embassy Async Executor (Single Core)                   │  │
-│  ├─────────────────────────────────────────────────────────┤  │
-│  │  Task 1: I2C Slave Handler                             │  │
-│  │    • read_async() → yields while waiting               │  │
-│  │    • Process command                                   │  │
-│  │    • write_async() → yields                            │  │
-│  │                                                         │  │
-│  │  Task 2: LED Blinker                                   │  │
-│  │    • Runs during I2C waits ✓                           │  │
-│  │    • 500ms on/off                                      │  │
-│  │                                                         │  │
-│  │  Task 3: Counter                                       │  │
-│  │    • Runs during I2C waits ✓                           │  │
-│  │    • 1 second increment                                │  │
-│  └─────────────────────────────────────────────────────────┘  │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  Embassy Async Executor (Single Core)                   │   │
+│  ├─────────────────────────────────────────────────────────┤   │
+│  │  Task 1: I2C Slave Handler                              │   │
+│  │    • read_async() → yields while waiting                │   │
+│  │    • Process command                                    │   │
+│  │    • write_async() → yields                             │   │
+│  │                                                         │   │
+│  │  Task 2: LED Blinker                                    │   │
+│  │    • Runs during I2C waits ✓                            │   │
+│  │    • 500ms on/off                                       │   │
+│  │                                                         │   │
+│  │  Task 3: Counter                                        │   │
+│  │    • Runs during I2C waits ✓                            │   │
+│  │    • 1 second increment                                 │   │
+│  └─────────────────────────────────────────────────────────┘   │
 │                         ↑                                      │
 │                         │ Hardware Interrupt                   │
 │                         │                                      │
-│  ┌─────────────────────────────────────────────────────────┐  │
-│  │  I2C Peripheral + Interrupt Handler (#[ram])           │  │
-│  │    • <1µs response to master                           │  │
-│  │    • Wakes appropriate async task                      │  │
-│  └─────────────────────────────────────────────────────────┘  │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  I2C Peripheral + Interrupt Handler (#[ram])            │   │
+│  │    • <1µs response to master                            │   │
+│  │    • Wakes appropriate async task                       │   │
+│  └─────────────────────────────────────────────────────────┘   │
 └────────────────────────────────────────────────────────────────┘
 ```
 

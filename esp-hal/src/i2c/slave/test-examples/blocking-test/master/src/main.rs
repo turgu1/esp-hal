@@ -186,7 +186,6 @@ fn run_test_suite(i2c: &mut I2c<'_, esp_hal::Blocking>, delay: &Delay) {
     }
     delay.delay_millis(100);
 
-    /*
     // Test 2: Simple read
     println!("Test 2: Simple Read");
     match test_simple_read(i2c, delay) {
@@ -201,6 +200,7 @@ fn run_test_suite(i2c: &mut I2c<'_, esp_hal::Blocking>, delay: &Delay) {
     }
     delay.delay_millis(100);
 
+/*/
     // Test 3: write_read (repeated START) - CRITICAL
     println!("Test 3: write_read() - Single Byte (CRITICAL)");
     match test_write_read_single(i2c) {
@@ -214,6 +214,7 @@ fn run_test_suite(i2c: &mut I2c<'_, esp_hal::Blocking>, delay: &Delay) {
         }
     }
     delay.delay_millis(100);
+
 
     // Test 4: write_read multi-byte
     println!("Test 4: write_read() - Multi-Byte (16 bytes)");

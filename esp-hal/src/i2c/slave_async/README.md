@@ -15,14 +15,14 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      I2C Master                              │
+│                      I2C Master                             │
 └───────────────────────┬─────────────────────────────────────┘
                         │ START + Addr + Data
                         ▼
 ┌─────────────────────────────────────────────────────────────┐
-│           ESP32 I2C Peripheral (Hardware)                    │
+│           ESP32 I2C Peripheral (Hardware)                   │
 │  ┌───────────────────────────────────────────────────────┐  │
-│  │  FIFO  │  Address Match  │  Clock Stretch  │  Events │  │
+│  │  FIFO  │  Address Match  │  Clock Stretch  │  Events  │  │
 │  └───────────────────────────────────────────────────────┘  │
 └───────────────────────┬─────────────────────────────────────┘
                         │ Interrupt (< 1µs)
@@ -36,12 +36,12 @@
                         │ Waker::wake()
                         ▼
 ┌─────────────────────────────────────────────────────────────┐
-│              Your Async Task (User Code)                     │
-│  loop {                                                      │
-│      slave.read_async(&mut buf).await?; // ← No blocking!  │
+│              Your Async Task (User Code)                    │
+│  loop {                                                     │
+│      slave.read_async(&mut buf).await?; // ← No blocking!   │
 │      process(&buf).await;               // ← Other tasks OK │
 │      slave.write_async(&response).await?;                   │
-│  }                                                           │
+│  }                                                          │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -198,13 +198,13 @@ The driver uses a thread-safe state machine:
 
 ```rust
 pub enum TransactionState {
-    Idle,                              // Waiting for master
-    AddressMatched { is_read: bool },  // Transaction starting
-    Receiving { bytes_received: usize }, // RX in progress
-    Transmitting { bytes_sent: usize },  // TX in progress
-    ClockStretching,                   // Paused
+    Idle,                                  // Waiting for master
+    AddressMatched { is_read: bool },      // Transaction starting
+    Receiving { bytes_received: usize },   // RX in progress
+    Transmitting { bytes_sent: usize },    // TX in progress
+    ClockStretching,                       // Paused
     Complete { bytes_transferred: usize }, // Done
-    Error(Error),                      // Error occurred
+    Error(Error),                          // Error occurred
 }
 ```
 

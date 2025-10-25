@@ -50,8 +50,9 @@ pub enum TransactionState {
 }
 
 /// Shared state between interrupt handler and async tasks
-#[derive(Debug)]
 pub struct State {
+    pub(crate) interrupt_counter: Mutex<RefCell<u32>>,
+
     /// Current transaction state
     pub(crate) transaction_state: Mutex<RefCell<TransactionState>>,
 
@@ -87,6 +88,7 @@ impl State {
     /// Create a new state instance
     pub const fn new() -> Self {
         Self {
+            interrupt_counter: Mutex::new(RefCell::new(0)),
             transaction_state: Mutex::new(RefCell::new(TransactionState::Idle)),
             rx_buffer: Mutex::new(RefCell::new(None)),
             tx_buffer: Mutex::new(RefCell::new(None)),
@@ -109,6 +111,24 @@ impl State {
             *self.rx_index.borrow_ref_mut(cs) = 0;
             *self.tx_index.borrow_ref_mut(cs) = 0;
             *self.last_error.borrow_ref_mut(cs) = None;
+        });
+    }
+
+    pub fn get_interrupt_count(&self) -> u32 {
+        critical_section::with(|cs| *self.interrupt_counter.borrow_ref(cs))
+    }
+
+    pub fn set_interrupt_counter(&self, value: u32) {
+        critical_section::with(|cs| {
+            *self.interrupt_counter.borrow_ref_mut(cs) = value;
+        });
+    }
+    
+    /// Increment interrupt counter
+    pub fn increment_interrupt_counter(&self) {
+        critical_section::with(|cs| {
+            let mut counter = self.interrupt_counter.borrow_ref_mut(cs);
+            *counter += 1;
         });
     }
 
@@ -201,5 +221,18 @@ impl State {
 impl Default for State {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl core::fmt::Debug for State {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("State")
+            .field("transaction_state", &"<mutex>")
+            .field("rx_buffer", &"<mutex>")
+            .field("tx_buffer", &"<mutex>") 
+            .field("rx_index", &"<mutex>")
+            .field("tx_index", &"<mutex>")
+            .field("last_error", &"<mutex>")
+            .finish()
     }
 }

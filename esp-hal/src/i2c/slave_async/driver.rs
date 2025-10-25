@@ -63,14 +63,20 @@ impl Driver<'_> {
 
         self.regs().ctr().write(|w| {
             w.ms_mode().clear_bit(); // Slave mode
+            w.conf_upgate().set_bit();
+            // Use open drain output for SDA and SCL
             w.sda_force_out().set_bit();
             w.scl_force_out().set_bit();
+            // Use Most Significant Bit first for sending and receiving data
             w.tx_lsb_first().clear_bit();
             w.rx_lsb_first().clear_bit();
 
             #[cfg(esp32s2)]
             w.ref_always_on().set_bit();
 
+            w.slv_tx_auto_start_en().set_bit();
+
+            // Ensure that clock is enabled
             w.clk_en().set_bit()
         });
 
@@ -79,12 +85,9 @@ impl Driver<'_> {
 
         #[cfg(esp32c6)]
         {
+            // Configure ESP32-C6 specific slave settings (ms_mode already set above)
             self.regs().ctr().modify(|_, w| {
-                w.ms_mode().clear_bit();
-                w.addr_broadcasting_en().clear_bit();
-                w.rx_lsb_first().clear_bit();
-                w.tx_lsb_first().clear_bit();
-                w.slv_tx_auto_start_en().clear_bit()
+                w.addr_broadcasting_en().clear_bit()
             });
         }
 
@@ -153,7 +156,6 @@ impl Driver<'_> {
         #[cfg(esp32c6)]
         {
             self.regs().ctr().modify(|_, w| {
-                w.ms_mode().clear_bit();
                 w.addr_10bit_rw_check_en().bit(is_10bit);
                 w.slv_tx_auto_start_en().set_bit()
             });
@@ -274,6 +276,20 @@ impl Driver<'_> {
         self.clear_all_interrupts();
     }
 
+    /// Explicitly clear TX FIFO (for stale data prevention)
+    pub(crate) fn clear_tx_fifo(&self) {
+        #[cfg(not(esp32))]
+        {
+            self.regs().fifo_conf().modify(|_, w| w.tx_fifo_rst().set_bit());
+            self.regs().fifo_conf().modify(|_, w| w.tx_fifo_rst().clear_bit());
+        }
+        #[cfg(esp32)]
+        {
+            self.regs().fifo_conf().modify(|_, w| w.tx_fifo_rst().set_bit());
+            self.regs().fifo_conf().modify(|_, w| w.tx_fifo_rst().clear_bit());
+        }
+    }
+
     /// Clear all pending interrupts
     fn clear_all_interrupts(&self) {
         self.regs().int_clr().write(|w| unsafe { w.bits(0x1FFF) });
@@ -284,20 +300,8 @@ impl Driver<'_> {
         #[cfg(esp32)]
         self.regs().ctr().modify(|_, w| w.trans_start().set_bit());
 
-        #[cfg(esp32c6)]
-        {
-            self.regs().ctr().modify(|_, w| w.conf_upgate().set_bit());
-            self.regs().ctr().modify(|_, w| {
-                w.trans_start().set_bit();
-                w.ms_mode().clear_bit()
-            });
-            self.regs()
-                .ctr()
-                .modify(|_, w| w.slv_tx_auto_start_en().set_bit());
-        }
-
-        #[cfg(not(any(esp32, esp32c6)))]
-        self.regs().ctr2().modify(|_, w| w.conf_upgate().set_bit());
+        #[cfg(not(any(esp32)))]
+        self.regs().ctr().modify(|_, w| w.conf_upgate().set_bit());
     }
 
     /// Read a byte from the FIFO
@@ -321,7 +325,7 @@ impl Driver<'_> {
                 let fifo_ptr = (property!("i2c_master.i2c0_data_register_ahb_address") + peri_offset) as *mut u32;
                 unsafe { fifo_ptr.write_volatile(data as u32); }
             } else {
-                self.regs().data().write(|w| unsafe { w.fifo_wdata().bits(data) });
+                self.regs().data().write(|w| unsafe { w.fifo_rdata().bits(data) });
             }
         }
     }
@@ -353,12 +357,86 @@ impl Driver<'_> {
             if status.rxfifo_ovf().bit_is_set() {
                 return Some(Error::RxFifoOverflow);
             }
-            if status.txfifo_udf().bit_is_set() {
+            if status.rxfifo_udf().bit_is_set() {
                 return Some(Error::TxFifoUnderflow);
             }
         }
 
         None
+    }
+
+    /// ESP32-C6 specific: Manually release clock stretching after write()
+    ///
+    /// This function must be called after loading TX FIFO data to release clock stretching
+    /// and allow the master to read the response.
+    #[cfg(esp32c6)]
+    pub(crate) fn release_scl_stretch(&self) {
+        if !self.config.config.clock_stretch_enable {
+            return; // No stretch to release if disabled
+        }
+
+        // Use the proper ESP-IDF mechanism to clear clock stretching
+        // The slave_scl_stretch_clr bit tells hardware to release the SCL line
+        self.regs().scl_stretch_conf().modify(|_, w| {
+            w.slave_scl_stretch_clr().set_bit()
+        });
+        
+        // Delay to let hardware process the clear
+        for _ in 0..50 {
+            unsafe { core::arch::asm!("nop") };
+        }
+        
+        // Update configuration to ensure state machine is synchronized
+        self.regs().ctr().modify(|_, w| w.conf_upgate().set_bit());
+        
+        // Final delay to ensure all hardware changes are applied
+        for _ in 0..30 {
+            unsafe { core::arch::asm!("nop") };
+        }
+    }
+
+    /// ESP32-C6 specific: Force release of clock stretching (emergency release)
+    #[cfg(esp32c6)]
+    pub(crate) fn force_release_scl_stretch(&self) {
+        if !self.config.config.clock_stretch_enable {
+            return;
+        }
+        
+        // Multi-step aggressive release for stuck transactions
+        // Step 1: Force clear using the clear bit multiple times if needed
+        for _ in 0..3 {
+            self.regs().scl_stretch_conf().modify(|_, w| {
+                w.slave_scl_stretch_clr().set_bit()
+            });
+            
+            // Delay between attempts
+            for _ in 0..10 {
+                unsafe { core::arch::asm!("nop") };
+            }
+        }
+        
+        // Step 2: Temporarily disable and re-enable stretching to reset state
+        self.regs().scl_stretch_conf().modify(|_, w| {
+            w.slave_scl_stretch_en().clear_bit()
+        });
+        
+        // Longer delay for state reset
+        for _ in 0..20 {
+            unsafe { core::arch::asm!("nop") };
+        }
+        
+        // Re-enable if originally enabled
+        self.regs().scl_stretch_conf().modify(|_, w| {
+            w.slave_scl_stretch_en().set_bit()
+        });
+        
+        // Step 3: Update configuration to ensure changes take effect
+        self.regs().ctr().modify(|_, w| w.conf_upgate().set_bit());
+        
+        // Final delay
+        for _ in 0..10 {
+            unsafe { core::arch::asm!("nop") };
+        }
     }
 }
 
@@ -370,6 +448,8 @@ impl Driver<'_> {
 pub(crate) fn async_handler(info: &super::instance::Info, state: &State) {
     let regs = info.regs();
     let int_status = regs.int_raw().read();
+
+    state.increment_interrupt_counter();
 
     // Check for errors first
     if int_status.arbitration_lost().bit_is_set() {
@@ -433,17 +513,30 @@ pub(crate) fn async_handler(info: &super::instance::Info, state: &State) {
                     *state.transaction_state.borrow_ref_mut(cs) = TransactionState::Complete {
                         bytes_transferred: bytes_received,
                     };
-                    state.wake_rx();
                 }
                 TransactionState::Transmitting { bytes_sent } => {
                     *state.transaction_state.borrow_ref_mut(cs) = TransactionState::Complete {
                         bytes_transferred: bytes_sent,
                     };
-                    state.wake_tx();
                 }
-                _ => {}
+                _ => {
+                    // Transaction completed but we might not have been tracking it properly
+                    // Check if there's data available and estimate bytes transferred
+                    let rx_fifo_count = info.regs().sr().read().rxfifo_cnt().bits() as usize;
+                    let rx_index = *state.rx_index.borrow_ref(cs);
+                    let total_bytes = rx_index + rx_fifo_count;
+                    
+                    *state.transaction_state.borrow_ref_mut(cs) = TransactionState::Complete {
+                        bytes_transferred: total_bytes,
+                    };
+                }
             }
         });
+
+        // Always wake both RX and TX tasks when transaction completes
+        // This ensures that any waiting async operation gets notified
+        state.wake_rx();
+        state.wake_tx();
 
         regs.int_clr()
             .write(|w| w.trans_complete().clear_bit_by_one());
@@ -453,6 +546,38 @@ pub(crate) fn async_handler(info: &super::instance::Info, state: &State) {
     if int_status.end_detect().bit_is_set() {
         // STOP condition indicates transaction end
         regs.int_clr().write(|w| w.end_detect().clear_bit_by_one());
+    }
+
+    // Handle TX FIFO underflow
+    #[cfg(esp32)]
+    let tx_underflow = int_status.txfifo_empty().bit_is_set(); // Note: ESP32 doesn't have separate underflow
+    #[cfg(not(esp32))]
+    let tx_underflow = int_status.rxfifo_udf().bit_is_set(); // Note: confusing naming - TxFifoUnderflow maps to rxfifo_udf
+
+    if tx_underflow {
+        // TX FIFO underflow - master tried to read but we don't have data ready
+        // This can happen if the master reads faster than we can supply data
+        // Set error state and wake TX task to handle it
+        state.set_error(Error::TxFifoUnderflow);
+        state.wake_tx();
+
+        #[cfg(not(esp32))]
+        regs.int_clr().write(|w| w.rxfifo_udf().clear_bit_by_one()); // Note: confusing naming
+    }
+
+    // Handle RX FIFO overflow
+    #[cfg(esp32)]
+    let rx_overflow = int_status.rxfifo_full().bit_is_set(); // Note: ESP32 doesn't have separate overflow
+    #[cfg(not(esp32))]
+    let rx_overflow = int_status.rxfifo_ovf().bit_is_set();
+
+    if rx_overflow {
+        // RX FIFO overflow - master sent data faster than we can process
+        state.set_error(Error::RxFifoOverflow);
+        state.wake_rx();
+
+        #[cfg(not(esp32))]
+        regs.int_clr().write(|w| w.rxfifo_ovf().clear_bit_by_one());
     }
 }
 
@@ -493,8 +618,9 @@ impl Future for ReadFuture<'_> {
         let available = self.driver.rx_fifo_count();
         if available > 0 {
             let to_read = available.min(self.buffer.len() - self.bytes_read);
+            let bytes_read = self.bytes_read;
             for i in 0..to_read {
-                self.buffer[self.bytes_read + i] = self.driver.read_fifo_byte();
+                self.buffer[bytes_read + i] = self.driver.read_fifo_byte();
             }
             self.bytes_read += to_read;
             self.driver.state.set_rx_index(self.bytes_read);
@@ -543,6 +669,13 @@ impl<'a> WriteFuture<'a> {
             bytes_written += 1;
         }
 
+        // ESP32-C6 specific: Release clock stretch after loading TX FIFO
+        #[cfg(esp32c6)]
+        {
+            // Critical: Release clock stretch to allow master to read the data
+            driver.release_scl_stretch();
+        }
+
         driver.state.set_tx_index(bytes_written);
         driver
             .state
@@ -585,14 +718,23 @@ impl Future for WriteFuture<'_> {
                 .set_state(super::state::TransactionState::Transmitting {
                     bytes_sent: self.bytes_written,
                 });
+
+            // ESP32-C6 specific: Release clock stretch after writing more data
+            #[cfg(esp32c6)]
+            {
+                self.driver.release_scl_stretch();
+            }
         }
 
         // Check if all data has been written
         if self.bytes_written >= self.buffer.len() {
-            // Check if transaction is complete
             use super::state::TransactionState;
             match self.driver.state.get_state() {
-                TransactionState::Complete { .. } => Poll::Ready(Ok(())),
+                TransactionState::Complete { .. } => {
+                    // Clear TX FIFO only after transmission is fully complete
+                    self.driver.clear_tx_fifo();
+                    Poll::Ready(Ok(()))
+                }
                 TransactionState::Error(e) => Poll::Ready(Err(e)),
                 _ => Poll::Pending,
             }

@@ -39,9 +39,8 @@ use esp_hal::{
     gpio::{Level, Output},
     i2c::slave_async::{Config, SlaveAsync},
     main,
-    prelude::*,
 };
-use esp_println::println;
+use esp_println::{println, print};
 use static_cell::StaticCell;
 
 const SLAVE_ADDR: u8 = 0x55;
@@ -197,26 +196,26 @@ async fn main(spawner: Spawner) {
 
     // Configure LED
     #[cfg(feature = "esp32c6")]
-    let led = Output::new(peripherals.GPIO8, Level::Low);
+    let led = Output::new(peripherals.GPIO8, Level::Low, esp_hal::gpio::OutputConfig::default());
     #[cfg(feature = "esp32")]
-    let led = Output::new(peripherals.GPIO2, Level::Low);
+    let led = Output::new(peripherals.GPIO2, Level::Low, esp_hal::gpio::OutputConfig::default());
     #[cfg(feature = "esp32c2")]
-    let led = Output::new(peripherals.GPIO8, Level::Low);
+    let led = Output::new(peripherals.GPIO8, Level::Low, esp_hal::gpio::OutputConfig::default());
     #[cfg(feature = "esp32c3")]
-    let led = Output::new(peripherals.GPIO8, Level::Low);
+    let led = Output::new(peripherals.GPIO8, Level::Low, esp_hal::gpio::OutputConfig::default());
     #[cfg(feature = "esp32h2")]
-    let led = Output::new(peripherals.GPIO8, Level::Low);
+    let led = Output::new(peripherals.GPIO8, Level::Low, esp_hal::gpio::OutputConfig::default());
     #[cfg(feature = "esp32s2")]
-    let led = Output::new(peripherals.GPIO18, Level::Low);
+    let led = Output::new(peripherals.GPIO18, Level::Low, esp_hal::gpio::OutputConfig::default());
     #[cfg(feature = "esp32s3")]
-    let led = Output::new(peripherals.GPIO48, Level::Low);
+    let led = Output::new(peripherals.GPIO48, Level::Low, esp_hal::gpio::OutputConfig::default());
 
     // Spawn concurrent tasks
     spawner
         .spawn(i2c_slave_task(i2c, echo_buffer, echo_len))
         .ok();
     spawner.spawn(led_blinker_task(led)).ok();
-    spawner.spawn(counter_task()).ok();
+    spawner.spawn(every_second_task()).ok();
 
     println!("✓ All tasks spawned successfully");
     println!("✓ System is now fully concurrent - I2C + LED + Counter\n");
@@ -244,23 +243,26 @@ async fn i2c_slave_task(
                     &rx_buffer[..len]
                 );
 
-                // Process command and prepare response
+                // Process command and prepare response immediately
                 let command = rx_buffer[0];
                 match command {
                     0x01 => {
-                        // Test 1: Echo test - save for next read
+                        // Test 1: Echo test - send back received data immediately
                         println!(
-                            "[I2C #{:03}] Echo test: storing {} bytes for next read",
+                            "[I2C #{:03}] Echo test: sending back {} bytes",
                             command_count, len
                         );
-                        echo_buffer.borrow_mut()[..len].copy_from_slice(&rx_buffer[..len]);
-                        *echo_len.borrow_mut() = len;
+                        if let Err(e) = i2c.write_async(&rx_buffer[..len]).await {
+                            println!("[I2C #{:03}] Echo write error: {:?}", command_count, e);
+                        } else {
+                            println!("[I2C #{:03}] Echo sent successfully", command_count);
+                        }
                     }
 
                     0x10 => {
                         // Test 2: Simple read - respond with 0x42
                         println!(
-                            "[I2C #{:03}] Simple read command: preloading 0x42",
+                            "[I2C #{:03}] Simple read command: sending 0x42",
                             command_count
                         );
                         let response = [0x42];
@@ -272,7 +274,7 @@ async fn i2c_slave_task(
                     0x20 => {
                         // Test 3: write_read single - respond with 0x43
                         println!(
-                            "[I2C #{:03}] write_read single: preloading 0x43",
+                            "[I2C #{:03}] write_read single: sending 0x43",
                             command_count
                         );
                         let response = [0x43];
@@ -284,7 +286,7 @@ async fn i2c_slave_task(
                     0x30 => {
                         // Test 4: write_read multi - respond with 16 sequential bytes
                         println!(
-                            "[I2C #{:03}] write_read multi: preloading 16 bytes (0..15)",
+                            "[I2C #{:03}] write_read multi: sending 16 bytes (0..15)",
                             command_count
                         );
                         let mut response = [0u8; 16];
@@ -299,7 +301,7 @@ async fn i2c_slave_task(
                     0x40 => {
                         // Test 5: write_read max FIFO - respond with 31 sequential bytes
                         println!(
-                            "[I2C #{:03}] write_read max FIFO: preloading 31 bytes (0..30)",
+                            "[I2C #{:03}] write_read max FIFO: sending 31 bytes (0..30)",
                             command_count
                         );
                         let mut response = [0u8; 31];
@@ -326,60 +328,52 @@ async fn i2c_slave_task(
                 Timer::after(Duration::from_millis(10)).await;
             }
         }
-
-        // Check if we need to send echo data on next master read
-        if *echo_len.borrow() > 0 {
-            let len = *echo_len.borrow();
-            let data = echo_buffer.borrow();
-            println!(
-                "[I2C #{:03}] Master reading echo: {} bytes {:02X?}",
-                command_count,
-                len,
-                &data[..len]
-            );
-
-            // Send echo response
-            if let Err(e) = i2c.write_async(&data[..len]).await {
-                println!("[I2C #{:03}] Echo write error: {:?}", command_count, e);
-            } else {
-                println!("[I2C #{:03}] Echo sent successfully", command_count);
-            }
-
-            // Clear echo buffer
-            *echo_len.borrow_mut() = 0;
-        }
     }
 }
 
 /// LED blinker task - demonstrates that I2C operations don't block this!
 #[embassy_executor::task]
 async fn led_blinker_task(mut led: Output<'static>) {
-    let mut blink_count = 0u32;
-
+    let mut count = 0u16;
     println!("[LED] Blinker task started - 500ms interval");
 
     loop {
         led.set_high();
-        blink_count += 1;
-        println!("[LED] 💡 ON  (blink #{})", blink_count);
         Timer::after(Duration::from_millis(500)).await;
 
         led.set_low();
-        println!("[LED] 🌑 OFF (blink #{})", blink_count);
         Timer::after(Duration::from_millis(500)).await;
+        
+        count += 1;
+        if count % 10 == 0 {
+            print!("💡");
+        }
     }
 }
 
 /// Counter task - another concurrent task demonstrating true async behavior
 #[embassy_executor::task]
-async fn counter_task() {
+async fn every_second_task() {
     let mut count = 0u32;
-
-    println!("[COUNTER] Task started - 1 second interval\n");
+    println!("[EVERY_SECOND] Task started - 1 second interval\n");
 
     loop {
         Timer::after(Duration::from_millis(1000)).await;
         count += 1;
-        println!("[COUNTER] 📊 Count = {} seconds elapsed", count);
+
+        // Access interrupt counter using the global function
+        #[cfg(feature = "esp32c6")]
+        {
+            let interrupt_count = esp_hal::i2c::slave_async::get_i2c0_interrupt_count();
+            println!(
+                "[SEC:{:03}] Time: {}s | I2C Interrupts: {}",
+                count, count, interrupt_count
+            );
+        }
+
+        #[cfg(not(feature = "esp32c6"))]
+        {
+            println!("[SEC:{:03}] Time: {}s | I2C Interrupts: N/A (not esp32c6)", count, count);
+        }
     }
 }
