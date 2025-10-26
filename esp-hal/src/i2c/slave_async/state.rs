@@ -56,6 +56,9 @@ pub struct State {
     /// Current transaction state
     pub(crate) transaction_state: Mutex<RefCell<TransactionState>>,
 
+    /// Previous transaction state (before last interrupt)
+    pub(crate) previous_state: Mutex<RefCell<TransactionState>>,
+
     /// RX buffer for receiving data from master
     pub(crate) rx_buffer: Mutex<RefCell<Option<&'static mut [u8]>>>,
 
@@ -90,6 +93,7 @@ impl State {
         Self {
             interrupt_counter: Mutex::new(RefCell::new(0)),
             transaction_state: Mutex::new(RefCell::new(TransactionState::Idle)),
+            previous_state: Mutex::new(RefCell::new(TransactionState::Idle)),
             rx_buffer: Mutex::new(RefCell::new(None)),
             tx_buffer: Mutex::new(RefCell::new(None)),
             rx_index: Mutex::new(RefCell::new(0)),
@@ -106,6 +110,7 @@ impl State {
     pub fn reset(&self) {
         critical_section::with(|cs| {
             *self.transaction_state.borrow_ref_mut(cs) = TransactionState::Idle;
+            *self.previous_state.borrow_ref_mut(cs) = TransactionState::Idle;
             *self.rx_buffer.borrow_ref_mut(cs) = None;
             *self.tx_buffer.borrow_ref_mut(cs) = None;
             *self.rx_index.borrow_ref_mut(cs) = 0;
@@ -137,9 +142,15 @@ impl State {
         critical_section::with(|cs| *self.transaction_state.borrow_ref(cs))
     }
 
+    /// Get the previous transaction state
+    pub fn get_previous_state(&self) -> TransactionState {
+        critical_section::with(|cs| *self.previous_state.borrow_ref(cs))
+    }
+
     /// Set the transaction state
     pub fn set_state(&self, state: TransactionState) {
         critical_section::with(|cs| {
+            *self.previous_state.borrow_ref_mut(cs) = *self.transaction_state.borrow_ref(cs);
             *self.transaction_state.borrow_ref_mut(cs) = state;
         });
     }

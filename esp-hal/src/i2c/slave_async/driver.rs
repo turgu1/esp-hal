@@ -507,17 +507,16 @@ pub(crate) fn async_handler(info: &super::instance::Info, state: &State) {
         use super::state::TransactionState;
 
         critical_section::with(|cs| {
-            let current_state = *state.transaction_state.borrow_ref(cs);
-            match current_state {
+            match state.get_state() {
                 TransactionState::Receiving { bytes_received } => {
-                    *state.transaction_state.borrow_ref_mut(cs) = TransactionState::Complete {
+                    state.set_state(TransactionState::Complete {
                         bytes_transferred: bytes_received,
-                    };
+                    });
                 }
                 TransactionState::Transmitting { bytes_sent } => {
-                    *state.transaction_state.borrow_ref_mut(cs) = TransactionState::Complete {
+                    state.set_state(TransactionState::Complete {
                         bytes_transferred: bytes_sent,
-                    };
+                    });
                 }
                 _ => {
                     // Transaction completed but we might not have been tracking it properly
@@ -526,9 +525,9 @@ pub(crate) fn async_handler(info: &super::instance::Info, state: &State) {
                     let rx_index = *state.rx_index.borrow_ref(cs);
                     let total_bytes = rx_index + rx_fifo_count;
                     
-                    *state.transaction_state.borrow_ref_mut(cs) = TransactionState::Complete {
+                    state.set_state(TransactionState::Complete {
                         bytes_transferred: total_bytes,
-                    };
+                    });
                 }
             }
         });
