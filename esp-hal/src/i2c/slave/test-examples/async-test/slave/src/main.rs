@@ -111,7 +111,7 @@ async fn status_led_task() {
     // For this demo, just print periodic status instead of trying to blink LED
     // RGB LEDs require special handling that varies by board
     println!("[LED] Status task started - will print every 2 seconds");
-    
+
     loop {
         Timer::after(Duration::from_secs(2)).await;
         println!("[LED] *** ASYNC TASK ALIVE *** (this proves async multitasking works!)");
@@ -122,13 +122,16 @@ async fn status_led_task() {
 #[embassy_executor::task]
 async fn command_processor_task() {
     println!("[PROC] Command processor task started");
-    
+
     loop {
         // Wait for command from I2C slave task (this is async!)
         let cmd = COMMAND_CHANNEL.receive().await;
-        
-        println!("[PROC] Processing command 0x{:02X} (can do async work here)", cmd.cmd);
-        
+
+        println!(
+            "[PROC] Processing command 0x{:02X} (can do async work here)",
+            cmd.cmd
+        );
+
         // Simulate complex async processing
         // This could be: network requests, database queries, long calculations, etc.
         match cmd.cmd {
@@ -137,19 +140,19 @@ async fn command_processor_task() {
                 Timer::after(Duration::from_millis(100)).await;
                 println!("[PROC] Echo processing complete!");
             }
-            
+
             CMD_WRITE_READ => {
                 println!("[PROC] Write-read - doing complex async analysis...");
                 Timer::after(Duration::from_millis(200)).await;
                 println!("[PROC] Analysis complete!");
             }
-            
+
             CMD_MULTI_BYTE => {
                 println!("[PROC] Multi-byte - fetching data asynchronously...");
                 Timer::after(Duration::from_millis(150)).await;
                 println!("[PROC] Data fetch complete!");
             }
-            
+
             _ => {
                 Timer::after(Duration::from_millis(50)).await;
                 println!("[PROC] Command processed");
@@ -196,7 +199,7 @@ async fn main(spawner: Spawner) {
         .with_address(SLAVE_ADDR.into())
         .with_clear_tx_on_write(true)
         .with_timeout_ms(2000);
-    
+
     // ESP32-C6 requires explicit clock stretch configuration
     #[cfg(feature = "esp32c6")]
     {
@@ -324,20 +327,23 @@ async fn i2c_slave_handler(mut i2c: I2c<'_, esp_hal::Blocking>) {
                     }
                 };
 
-                println!("[I2C] Test {} - {}: {} bytes", test_nbr, test_name, bytes_read);
-                
+                println!(
+                    "[I2C] Test {} - {}: {} bytes",
+                    test_nbr, test_name, bytes_read
+                );
+
                 // Respond to master immediately (synchronous, fast!)
                 if let Err(e) = i2c.write(&response_data[..response_len]) {
                     println!("[I2C] ERROR: Response write failed: {:?}", e);
                 } else {
                     println!("[I2C] Response sent: {} bytes", response_len);
-                    
+
                     // WORKAROUND: Manual stretch release needed in async context
                     // (blocking example doesn't need this - potential driver issue)
                     #[cfg(feature = "esp32c6")]
                     {
-                        for _ in 0..700000 { 
-                            unsafe { core::arch::asm!("nop") }; 
+                        for _ in 0..700000 {
+                            unsafe { core::arch::asm!("nop") };
                         }
                         i2c.release_scl_stretch();
                         println!("[I2C] Clock stretch released");
@@ -351,7 +357,7 @@ async fn i2c_slave_handler(mut i2c: I2c<'_, esp_hal::Blocking>) {
                     data: rx_buffer,
                     len: bytes_read,
                 };
-                
+
                 // Send to processor (non-blocking - uses try_send)
                 match COMMAND_CHANNEL.try_send(cmd_msg) {
                     Ok(_) => println!("[I2C] Command queued for async processing"),
@@ -368,7 +374,7 @@ async fn i2c_slave_handler(mut i2c: I2c<'_, esp_hal::Blocking>) {
                 if !matches!(e, esp_hal::i2c::slave::Error::Timeout) {
                     println!("ERROR: Read failed: {:?}", e);
                 }
-                
+
                 // Yield on timeout to allow LED task to run
                 embassy_futures::yield_now().await;
             }

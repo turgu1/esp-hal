@@ -166,7 +166,7 @@ pub trait Instance: crate::private::Sealed + any::Degrade {
 
     /// Set interrupt handler on the concrete peripheral
     fn set_interrupt_handler(&self, handler: InterruptHandler);
-    
+
     /// Enable peripheral interrupts (call after handler is set and peripheral is configured)
     fn enable_peripheral_interrupts(&self, priority: Priority);
 }
@@ -211,7 +211,7 @@ macro_rules! impl_instance {
                 self.bind_peri_interrupt(handler.handler());
                 // Note: NOT calling enable_peri_interrupt here
             }
-            
+
             fn enable_peripheral_interrupts(&self, priority: Priority) {
                 // Enable peripheral interrupt only after everything is configured
                 self.enable_peri_interrupt(priority);
@@ -242,7 +242,7 @@ impl Instance for AnyI2cSlave<'_> {
     fn set_interrupt_handler(&self, handler: InterruptHandler) {
         any::delegate!(self, i2c => { i2c.set_interrupt_handler(handler) })
     }
-    
+
     fn enable_peripheral_interrupts(&self, priority: Priority) {
         any::delegate!(self, i2c => { i2c.enable_peripheral_interrupts(priority) })
     }
@@ -275,7 +275,3 @@ pub fn get_i2c0_interrupt_count() -> u32 {
 // Implement for I2C1
 #[cfg(i2c_slave_i2c1)]
 impl_instance!(I2C1, I2cExt1, I2C_EXT1, I2CEXT1_SCL, I2CEXT1_SDA);
-
-
-
-

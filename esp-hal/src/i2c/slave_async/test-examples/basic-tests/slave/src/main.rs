@@ -40,7 +40,7 @@ use esp_hal::{
     i2c::slave_async::{Config, SlaveAsync},
     main,
 };
-use esp_println::{println, print};
+use esp_println::{print, println};
 use static_cell::StaticCell;
 
 const SLAVE_ADDR: u8 = 0x55;
@@ -196,19 +196,47 @@ async fn main(spawner: Spawner) {
 
     // Configure LED
     #[cfg(feature = "esp32c6")]
-    let led = Output::new(peripherals.GPIO8, Level::Low, esp_hal::gpio::OutputConfig::default());
+    let led = Output::new(
+        peripherals.GPIO8,
+        Level::Low,
+        esp_hal::gpio::OutputConfig::default(),
+    );
     #[cfg(feature = "esp32")]
-    let led = Output::new(peripherals.GPIO2, Level::Low, esp_hal::gpio::OutputConfig::default());
+    let led = Output::new(
+        peripherals.GPIO2,
+        Level::Low,
+        esp_hal::gpio::OutputConfig::default(),
+    );
     #[cfg(feature = "esp32c2")]
-    let led = Output::new(peripherals.GPIO8, Level::Low, esp_hal::gpio::OutputConfig::default());
+    let led = Output::new(
+        peripherals.GPIO8,
+        Level::Low,
+        esp_hal::gpio::OutputConfig::default(),
+    );
     #[cfg(feature = "esp32c3")]
-    let led = Output::new(peripherals.GPIO8, Level::Low, esp_hal::gpio::OutputConfig::default());
+    let led = Output::new(
+        peripherals.GPIO8,
+        Level::Low,
+        esp_hal::gpio::OutputConfig::default(),
+    );
     #[cfg(feature = "esp32h2")]
-    let led = Output::new(peripherals.GPIO8, Level::Low, esp_hal::gpio::OutputConfig::default());
+    let led = Output::new(
+        peripherals.GPIO8,
+        Level::Low,
+        esp_hal::gpio::OutputConfig::default(),
+    );
     #[cfg(feature = "esp32s2")]
-    let led = Output::new(peripherals.GPIO18, Level::Low, esp_hal::gpio::OutputConfig::default());
+    let led = Output::new(
+        peripherals.GPIO18,
+        Level::Low,
+        esp_hal::gpio::OutputConfig::default(),
+    );
     #[cfg(feature = "esp32s3")]
-    let led = Output::new(peripherals.GPIO48, Level::Low, esp_hal::gpio::OutputConfig::default());
+    let led = Output::new(
+        peripherals.GPIO48,
+        Level::Low,
+        esp_hal::gpio::OutputConfig::default(),
+    );
 
     // Spawn concurrent tasks
     spawner
@@ -343,7 +371,7 @@ async fn led_blinker_task(mut led: Output<'static>) {
 
         led.set_low();
         Timer::after(Duration::from_millis(500)).await;
-        
+
         count += 1;
         if count % 10 == 0 {
             print!("💡");
@@ -373,7 +401,10 @@ async fn every_second_task() {
 
         #[cfg(not(feature = "esp32c6"))]
         {
-            println!("[SEC:{:03}] Time: {}s | I2C Interrupts: N/A (not esp32c6)", count, count);
+            println!(
+                "[SEC:{:03}] Time: {}s | I2C Interrupts: N/A (not esp32c6)",
+                count, count
+            );
         }
     }
 }

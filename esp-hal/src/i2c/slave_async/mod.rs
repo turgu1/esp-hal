@@ -583,14 +583,17 @@ impl<'d> SlaveAsync<'d> {
         };
 
         slave.apply_config(&config)?;
-        
+
         // Step 1: Set up interrupt handler AFTER degradation using proper delegation
         // This only binds the handler but doesn't enable peripheral interrupts yet
         slave.set_interrupt_handler(slave.driver().info.async_handler);
-        
+
         // Step 2: Clear any interrupts that might have been generated during configuration
-        slave.driver().info.clear_interrupts(enumset::EnumSet::all());
-        
+        slave
+            .driver()
+            .info
+            .clear_interrupts(enumset::EnumSet::all());
+
         // Step 3: Enable peripheral interrupts BEFORE enabling any interrupt sources
         // This prevents any interrupt events from triggering when peripheral is enabled
         slave.enable_peripheral_interrupts(Priority::Priority3);
@@ -607,19 +610,15 @@ impl<'d> SlaveAsync<'d> {
 
         // Enable essential interrupts for I2C slave operation + Timeout for testing
         self.driver().info.enable_listen(
-            Event::AddressMatch
-                | Event::RxFifoThreshold
-                | Event::TransComplete
-                | Event::Timeout,
+            Event::AddressMatch | Event::RxFifoThreshold | Event::TransComplete | Event::Timeout,
             true,
         );
-
     }
 
     fn set_interrupt_handler(&mut self, handler: InterruptHandler) {
         self.i2c.set_interrupt_handler(handler);
     }
-    
+
     fn enable_peripheral_interrupts(&mut self, priority: Priority) {
         self.i2c.enable_peripheral_interrupts(priority);
     }

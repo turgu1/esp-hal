@@ -28,7 +28,7 @@ use esp_hal::{
     i2c::slave::{Config, Error, I2c},
     main,
 };
-use esp_println::{println, print};
+use esp_println::{print, println};
 
 const SLAVE_ADDR: u8 = 0x55;
 
@@ -105,7 +105,7 @@ fn main() -> ! {
         .with_address(SLAVE_ADDR.into())
         .with_clear_tx_on_write(true)
         .with_timeout_ms(2000);
-    
+
     // ESP32-C6 requires explicit clock stretch configuration
     #[cfg(feature = "esp32c6")]
     {

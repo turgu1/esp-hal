@@ -128,7 +128,7 @@ impl State {
             *self.interrupt_counter.borrow_ref_mut(cs) = value;
         });
     }
-    
+
     /// Increment interrupt counter
     pub fn increment_interrupt_counter(&self) {
         critical_section::with(|cs| {
@@ -240,7 +240,7 @@ impl core::fmt::Debug for State {
         f.debug_struct("State")
             .field("transaction_state", &"<mutex>")
             .field("rx_buffer", &"<mutex>")
-            .field("tx_buffer", &"<mutex>") 
+            .field("tx_buffer", &"<mutex>")
             .field("rx_index", &"<mutex>")
             .field("tx_index", &"<mutex>")
             .field("last_error", &"<mutex>")

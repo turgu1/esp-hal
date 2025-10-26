@@ -86,9 +86,9 @@ impl Driver<'_> {
         #[cfg(esp32c6)]
         {
             // Configure ESP32-C6 specific slave settings (ms_mode already set above)
-            self.regs().ctr().modify(|_, w| {
-                w.addr_broadcasting_en().clear_bit()
-            });
+            self.regs()
+                .ctr()
+                .modify(|_, w| w.addr_broadcasting_en().clear_bit());
         }
 
         // Configure FIFO thresholds
@@ -280,13 +280,21 @@ impl Driver<'_> {
     pub(crate) fn clear_tx_fifo(&self) {
         #[cfg(not(esp32))]
         {
-            self.regs().fifo_conf().modify(|_, w| w.tx_fifo_rst().set_bit());
-            self.regs().fifo_conf().modify(|_, w| w.tx_fifo_rst().clear_bit());
+            self.regs()
+                .fifo_conf()
+                .modify(|_, w| w.tx_fifo_rst().set_bit());
+            self.regs()
+                .fifo_conf()
+                .modify(|_, w| w.tx_fifo_rst().clear_bit());
         }
         #[cfg(esp32)]
         {
-            self.regs().fifo_conf().modify(|_, w| w.tx_fifo_rst().set_bit());
-            self.regs().fifo_conf().modify(|_, w| w.tx_fifo_rst().clear_bit());
+            self.regs()
+                .fifo_conf()
+                .modify(|_, w| w.tx_fifo_rst().set_bit());
+            self.regs()
+                .fifo_conf()
+                .modify(|_, w| w.tx_fifo_rst().clear_bit());
         }
     }
 
@@ -377,18 +385,18 @@ impl Driver<'_> {
 
         // Use the proper ESP-IDF mechanism to clear clock stretching
         // The slave_scl_stretch_clr bit tells hardware to release the SCL line
-        self.regs().scl_stretch_conf().modify(|_, w| {
-            w.slave_scl_stretch_clr().set_bit()
-        });
-        
+        self.regs()
+            .scl_stretch_conf()
+            .modify(|_, w| w.slave_scl_stretch_clr().set_bit());
+
         // Delay to let hardware process the clear
         for _ in 0..50 {
             unsafe { core::arch::asm!("nop") };
         }
-        
+
         // Update configuration to ensure state machine is synchronized
         self.regs().ctr().modify(|_, w| w.conf_upgate().set_bit());
-        
+
         // Final delay to ensure all hardware changes are applied
         for _ in 0..30 {
             unsafe { core::arch::asm!("nop") };
@@ -401,38 +409,38 @@ impl Driver<'_> {
         if !self.config.config.clock_stretch_enable {
             return;
         }
-        
+
         // Multi-step aggressive release for stuck transactions
         // Step 1: Force clear using the clear bit multiple times if needed
         for _ in 0..3 {
-            self.regs().scl_stretch_conf().modify(|_, w| {
-                w.slave_scl_stretch_clr().set_bit()
-            });
-            
+            self.regs()
+                .scl_stretch_conf()
+                .modify(|_, w| w.slave_scl_stretch_clr().set_bit());
+
             // Delay between attempts
             for _ in 0..10 {
                 unsafe { core::arch::asm!("nop") };
             }
         }
-        
+
         // Step 2: Temporarily disable and re-enable stretching to reset state
-        self.regs().scl_stretch_conf().modify(|_, w| {
-            w.slave_scl_stretch_en().clear_bit()
-        });
-        
+        self.regs()
+            .scl_stretch_conf()
+            .modify(|_, w| w.slave_scl_stretch_en().clear_bit());
+
         // Longer delay for state reset
         for _ in 0..20 {
             unsafe { core::arch::asm!("nop") };
         }
-        
+
         // Re-enable if originally enabled
-        self.regs().scl_stretch_conf().modify(|_, w| {
-            w.slave_scl_stretch_en().set_bit()
-        });
-        
+        self.regs()
+            .scl_stretch_conf()
+            .modify(|_, w| w.slave_scl_stretch_en().set_bit());
+
         // Step 3: Update configuration to ensure changes take effect
         self.regs().ctr().modify(|_, w| w.conf_upgate().set_bit());
-        
+
         // Final delay
         for _ in 0..10 {
             unsafe { core::arch::asm!("nop") };
@@ -524,7 +532,7 @@ pub(crate) fn async_handler(info: &super::instance::Info, state: &State) {
                     let rx_fifo_count = info.regs().sr().read().rxfifo_cnt().bits() as usize;
                     let rx_index = *state.rx_index.borrow_ref(cs);
                     let total_bytes = rx_index + rx_fifo_count;
-                    
+
                     state.set_state(TransactionState::Complete {
                         bytes_transferred: total_bytes,
                     });

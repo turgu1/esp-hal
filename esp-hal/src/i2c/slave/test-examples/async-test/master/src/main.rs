@@ -93,7 +93,7 @@ esp_bootloader_esp_idf::esp_app_desc!();
 #[embassy_executor::task]
 async fn status_led_task() {
     println!("[LED] Status task started - printing every 3 seconds");
-    
+
     loop {
         Timer::after(Duration::from_secs(3)).await;
         println!("[LED] *** I2C Master async task still running! ***");
@@ -111,7 +111,10 @@ async fn write_with_retry(
             Ok(_) => return Ok(()),
             Err(e) => {
                 if attempt < MAX_RETRIES {
-                    println!("  [Retry {}/{}] Write failed: {:?}", attempt, MAX_RETRIES, e);
+                    println!(
+                        "  [Retry {}/{}] Write failed: {:?}",
+                        attempt, MAX_RETRIES, e
+                    );
                     Timer::after(Duration::from_millis(RETRY_DELAY_MS)).await;
                 } else {
                     return Err(e);
@@ -156,7 +159,10 @@ async fn write_read_with_retry(
             Ok(_) => return Ok(()),
             Err(e) => {
                 if attempt < MAX_RETRIES {
-                    println!("  [Retry {}/{}] Write-read failed: {:?}", attempt, MAX_RETRIES, e);
+                    println!(
+                        "  [Retry {}/{}] Write-read failed: {:?}",
+                        attempt, MAX_RETRIES, e
+                    );
                     Timer::after(Duration::from_millis(RETRY_DELAY_MS)).await;
                 } else {
                     return Err(e);
@@ -184,7 +190,7 @@ async fn main(spawner: Spawner) {
     println!("\n=== ESP32-S2 I2C Master (Async Mode) ===");
     #[cfg(feature = "esp32s3")]
     println!("\n=== ESP32-S3 I2C Master (Async Mode) ===");
-    
+
     println!("Testing I2C Slave Async Functionality\n");
 
     let peripherals = esp_hal::init(esp_hal::Config::default());
@@ -390,7 +396,10 @@ async fn main(spawner: Spawner) {
                     let elapsed = test4_start.elapsed();
                     let expected = [0x44u8, 0x45, 0x46, 0x47];
                     if rx_data == expected {
-                        println!("  ✓ PASS: Received 4 bytes correctly (Stretch: {:?})", elapsed);
+                        println!(
+                            "  ✓ PASS: Received 4 bytes correctly (Stretch: {:?})",
+                            elapsed
+                        );
                         passed += 1;
                     } else {
                         println!("  ✗ FAIL: Data mismatch");
@@ -460,7 +469,10 @@ async fn main(spawner: Spawner) {
             Ok(_) => {
                 let elapsed = test6_start.elapsed();
                 if rx_data[0] == 0x43 {
-                    println!("  ✓ PASS: Received 0x43 with 31-byte packet (Stretch: {:?})", elapsed);
+                    println!(
+                        "  ✓ PASS: Received 0x43 with 31-byte packet (Stretch: {:?})",
+                        elapsed
+                    );
                     if elapsed.as_millis() > 10 {
                         println!("    [Large packet handled correctly!]");
                     }

@@ -27,7 +27,7 @@
 use esp_backtrace as _;
 use esp_hal::{
     delay::Delay,
-    i2c::master::{Config, Error, I2c, BusTimeout},
+    i2c::master::{BusTimeout, Config, Error, I2c},
     main,
     time::Rate,
 };
@@ -91,7 +91,7 @@ fn main() -> ! {
     println!("\n=== ESP32-S2 I2C Master (Blocking Mode) ===");
     #[cfg(feature = "esp32s3")]
     println!("\n=== ESP32-S3 I2C Master (Blocking Mode) ===");
-    
+
     println!("Testing I2C Slave Blocking Functionality\n");
 
     let peripherals = esp_hal::init(esp_hal::Config::default());
@@ -172,6 +172,7 @@ fn run_test_suite(i2c: &mut I2c<'_, esp_hal::Blocking>, delay: &Delay) {
     println!("Starting I2C Slave Test Suite");
     println!("=================================\n");
 
+    /*
     // Test 1: Simple write with echo
     println!("Test 1: Simple Write with Echo");
     match test_simple_write(i2c, delay) {
@@ -200,7 +201,8 @@ fn run_test_suite(i2c: &mut I2c<'_, esp_hal::Blocking>, delay: &Delay) {
     }
     delay.delay_millis(100);
 
-/*/
+    */
+
     // Test 3: write_read (repeated START) - CRITICAL
     println!("Test 3: write_read() - Single Byte (CRITICAL)");
     match test_write_read_single(i2c) {
@@ -215,49 +217,49 @@ fn run_test_suite(i2c: &mut I2c<'_, esp_hal::Blocking>, delay: &Delay) {
     }
     delay.delay_millis(100);
 
+    /*
+        // Test 4: write_read multi-byte
+        println!("Test 4: write_read() - Multi-Byte (16 bytes)");
+        match test_write_read_multi(i2c) {
+            Ok(_) => {
+                passed += 1;
+                println!("  ✓ PASS\n");
+            }
+            Err(e) => {
+                failed += 1;
+                println!("  ✗ FAIL: {:?}\n", e);
+            }
+        }
+        delay.delay_millis(100);
 
-    // Test 4: write_read multi-byte
-    println!("Test 4: write_read() - Multi-Byte (16 bytes)");
-    match test_write_read_multi(i2c) {
-        Ok(_) => {
-            passed += 1;
-            println!("  ✓ PASS\n");
+        // Test 5: write_read maximum FIFO
+        println!("Test 5: write_read() - Maximum FIFO (31 bytes)");
+        match test_write_read_max_fifo(i2c) {
+            Ok(_) => {
+                passed += 1;
+                println!("  ✓ PASS\n");
+            }
+            Err(e) => {
+                failed += 1;
+                println!("  ✗ FAIL: {:?}\n", e);
+            }
         }
-        Err(e) => {
-            failed += 1;
-            println!("  ✗ FAIL: {:?}\n", e);
-        }
-    }
-    delay.delay_millis(100);
+        delay.delay_millis(100);
 
-    // Test 5: write_read maximum FIFO
-    println!("Test 5: write_read() - Maximum FIFO (31 bytes)");
-    match test_write_read_max_fifo(i2c) {
-        Ok(_) => {
-            passed += 1;
-            println!("  ✓ PASS\n");
+        // Test 6: write_read large write
+        println!("Test 6: write_read() - Large Write (31 bytes) + Single Read");
+        match test_big_write_read_single(i2c) {
+            Ok(_) => {
+                passed += 1;
+                println!("  ✓ PASS\n");
+            }
+            Err(e) => {
+                failed += 1;
+                println!("  ✗ FAIL: {:?}\n", e);
+            }
         }
-        Err(e) => {
-            failed += 1;
-            println!("  ✗ FAIL: {:?}\n", e);
-        }
-    }
-    delay.delay_millis(100);
-
-    // Test 6: write_read large write
-    println!("Test 6: write_read() - Large Write (31 bytes) + Single Read");
-    match test_big_write_read_single(i2c) {
-        Ok(_) => {
-            passed += 1;
-            println!("  ✓ PASS\n");
-        }
-        Err(e) => {
-            failed += 1;
-            println!("  ✗ FAIL: {:?}\n", e);
-        }
-    }
-    delay.delay_millis(100);
-*/
+        delay.delay_millis(100);
+    */
 
     // Summary
     println!("=================================");
