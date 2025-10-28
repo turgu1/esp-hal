@@ -208,14 +208,6 @@ macro_rules! property {
         true
     };
 }
-/// Macro to get the address range of the given memory region.
-#[macro_export]
-#[cfg_attr(docsrs, doc(cfg(feature = "_device-selected")))]
-macro_rules! memory_range {
-    ("DRAM") => {
-        1070202880..1070465024
-    };
-}
 #[macro_export]
 #[cfg_attr(docsrs, doc(cfg(feature = "_device-selected")))]
 macro_rules! for_each_soc_xtal_options {
@@ -261,9 +253,12 @@ macro_rules! implement_peripheral_clocks {
             Uart0,
             #[doc = "UART1 peripheral clock signal"]
             Uart1,
+            #[doc = "UART_MEM peripheral clock signal"]
+            UartMem,
         }
         impl Peripheral {
-            const KEEP_ENABLED: &[Peripheral] = &[Self::Systimer, Self::Timg0, Self::Uart0];
+            const KEEP_ENABLED: &[Peripheral] =
+                &[Self::Systimer, Self::Timg0, Self::Uart0, Self::UartMem];
             const COUNT: usize = Self::ALL.len();
             const ALL: &[Self] = &[
                 Self::ApbSarAdc,
@@ -278,6 +273,7 @@ macro_rules! implement_peripheral_clocks {
                 Self::Tsens,
                 Self::Uart0,
                 Self::Uart1,
+                Self::UartMem,
             ];
         }
         unsafe fn enable_internal_racey(peripheral: Peripheral, enable: bool) {
@@ -341,6 +337,11 @@ macro_rules! implement_peripheral_clocks {
                     crate::peripherals::SYSTEM::regs()
                         .perip_clk_en0()
                         .modify(|_, w| w.uart1_clk_en().bit(enable));
+                }
+                Peripheral::UartMem => {
+                    crate::peripherals::SYSTEM::regs()
+                        .perip_clk_en0()
+                        .modify(|_, w| w.uart_mem_clk_en().bit(enable));
                 }
             }
         }
@@ -406,8 +407,36 @@ macro_rules! implement_peripheral_clocks {
                         .perip_rst_en0()
                         .modify(|_, w| w.uart1_rst().bit(reset));
                 }
+                Peripheral::UartMem => {
+                    crate::peripherals::SYSTEM::regs()
+                        .perip_rst_en0()
+                        .modify(|_, w| w.uart_mem_rst().bit(reset));
+                }
             }
         }
+    };
+}
+/// Macro to get the address range of the given memory region.
+///
+/// This macro provides two syntax options for each memory region:
+///
+/// - `memory_range!("region_name")` returns the address range as a range expression (`start..end`).
+/// - `memory_range!(size as str, "region_name")` returns the size of the region as a string
+///   literal.
+#[macro_export]
+#[cfg_attr(docsrs, doc(cfg(feature = "_device-selected")))]
+macro_rules! memory_range {
+    ("DRAM") => {
+        1070202880..1070465024
+    };
+    (size as str, "DRAM") => {
+        "262144"
+    };
+    ("DRAM2_UNINIT") => {
+        1070393344..1070459760
+    };
+    (size as str, "DRAM2_UNINIT") => {
+        "66416"
     };
 }
 #[macro_export]
