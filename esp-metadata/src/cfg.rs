@@ -298,6 +298,7 @@ driver_configs![
             xtal_options: Vec<u32>,
             #[serde(default)]
             peripheral_clocks: PeripheralClocks,
+            memory_map: MemoryMap,
         }
     },
 
